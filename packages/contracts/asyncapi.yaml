@@ -1,13 +1,74 @@
 asyncapi: 2.6.0
-info: { title: BINNBOT events, version: 1.0.0 }
+info:
+  title: BINNBOT Event Bus
+  version: 1.0.0
+  description: |
+    BINNBOT servisleri arasında mesajlaşma kontratı.
+    Signals → Robot Exec → Orders → Executions → Reporting
+    Ayrıca NewsFeed olayları (Plus/Pro kullanıcılar için).
+
+servers:
+  production:
+    url: amqp://rabbitmq:5672
+    protocol: amqp
+
 channels:
+
   signals.v1:
+    description: İndikatör/filtre sinyalleri
     publish:
       message:
         name: Signal
         payload:
           type: object
           properties:
-            symbol: { type: string }
+            symbol: { type: string, example: BTCUSDT }
             kind:   { type: string, enum: [buy, sell] }
+            source: { type: string, example: "supertrend" }
             ts:     { type: string, format: date-time }
+
+  orders.v1:
+    description: Robotların ürettiği emirler
+    publish:
+      message:
+        name: Order
+        payload:
+          type: object
+          properties:
+            robotId: { type: string, format: uuid }
+            symbol:  { type: string }
+            side:    { type: string, enum: [buy, sell, long, short] }
+            qty:     { type: number, example: 100 }
+            price:   { type: number, example: 45231.5 }
+            ts:      { type: string, format: date-time }
+
+  executions.v1:
+    description: Gerçekleşen işlemler (simülasyon veya gerçek)
+    publish:
+      message:
+        name: Execution
+        payload:
+          type: object
+          properties:
+            orderId:  { type: string, format: uuid }
+            robotId:  { type: string, format: uuid }
+            symbol:   { type: string }
+            side:     { type: string }
+            qty:      { type: number }
+            price:    { type: number }
+            fee:      { type: number }
+            ts:       { type: string, format: date-time }
+
+  newsfeed.v1:
+    description: Haber akışı olayları
+    publish:
+      message:
+        name: NewsItem
+        payload:
+          type: object
+          properties:
+            source:  { type: string, example: "coindesk" }
+            title:   { type: string }
+            url:     { type: string, format: uri }
+            summary: { type: string }
+            ts:      { type: string, format: date-time }
