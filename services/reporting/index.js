@@ -1,20 +1,50 @@
 // services/reporting/index.js
-console.log("reporting service started");
+import http from "http";
+import { readFileSync, existsSync } from "fs";
+import { dirname } from "path";
+import { fileURLToPath } from "url";
 
-// Dummy summary generator
-function summary() {
-  return {
-    pnlTotal: 42031,
-    winrate: 0.61,
-    maxDrawdown: 0.22,
-    pnlDaily: [
-      { date: "2025-08-01", pnl: 1200 },
-      { date: "2025-08-02", pnl: -340 },
-    ],
-  };
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PORT = process.env.REPORTING_PORT || 8092;
+
+function readSummary() {
+  const p = `${__dirname}/sample-data/summary.json`;
+  if (!existsSync(p)) {
+    return {
+      pnlTotal: 0, winrate: 0, maxDrawdown: 0, pnlDaily: []
+    };
+  }
+  try {
+    const raw = readFileSync(p, "utf8") || "{}";
+    return JSON.parse(raw);
+  } catch {
+    return { pnlTotal: 0, winrate: 0, maxDrawdown: 0, pnlDaily: [] };
+  }
 }
 
-// Her 20 saniyede bir log
-setInterval(() => {
-  console.log("reporting heartbeat", new Date().toISOString());
-}, 20000);
+const server = http.createServer((req, res) => {
+  // CORS
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+    return res.end();
+  }
+  const cors = { "Access-Control-Allow-Origin": "*" };
+
+  if (req.url === "/healthz" && req.method === "GET") {
+    res.writeHead(200); return res.end("ok");
+  }
+
+  if (req.url.startsWith("/summary") && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", ...cors });
+    return res.end(JSON.stringify(readSummary()));
+  }
+
+  res.writeHead(404, cors);
+  res.end("not found");
+});
+
+server.listen(PORT, () => console.log(`reporting service on :${PORT}`));
