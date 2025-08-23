@@ -1,0 +1,464 @@
+openapi: 3.0.3
+info:
+  title: BINNBOT Public API
+  version: 1.0.0
+  description: |
+    BINNBOT REST API (MVP) — Auth, Robots, Tests, Scanner, Reports.
+    Bu sözleşme, modüller arası bağımsız geliştirmeyi güvence altına alır.
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+
+tags:
+  - name: Auth
+  - name: Robots
+  - name: Tests
+  - name: Scanner
+  - name: Reports
+  - name: System
+
+paths:
+
+  /healthz:
+    get:
+      tags: [System]
+      summary: Liveness
+      responses:
+        '200': { description: ok }
+
+  # ---------- AUTH ----------
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: E-posta/şifre ile giriş (dummy)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh token ile access token yenileme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------- ROBOTS ----------
+  /robots:
+    get:
+      tags: [Robots]
+      summary: Robotları listele (kullanıcı bazlı)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, paused, stopped] }
+        - in: query
+          name: symbol
+          schema: { type: string, example: BTCUSDT }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Robot listesi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Robot' }
+                  page: { type: integer }
+                  limit: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+    post:
+      tags: [Robots]
+      summary: Yeni robot oluştur
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RobotCreate' }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Robot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /robots/{robotId}:
+    patch:
+      tags: [Robots]
+      summary: Robotu güncelle (ad, schedule, params, status)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RobotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RobotUpdate' }
+      responses:
+        '200':
+          description: Güncellendi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Robot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [Robots]
+      summary: Robotu sil
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/RobotId'
+      responses:
+        '204': { description: Silindi }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------- TESTS ----------
+  /tests/active/spot:
+    post:
+      tags: [Tests]
+      summary: Active Test — Spot (gerçek zaman simülasyon)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestRequest' }
+      responses:
+        '200':
+          description: Test sonucu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /tests/backtest/spot:
+    post:
+      tags: [Tests]
+      summary: Backtest — Spot (tarih aralığı + parametreler)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BacktestRequest' }
+      responses:
+        '200':
+          description: Backtest sonucu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # (Vadeli endpoints: yazılım tamamlandığında benzer şekilde eklenecek)
+
+  # ---------- SCANNER ----------
+  /scanner/templates:
+    get:
+      tags: [Scanner]
+      summary: Hazır şablonları listele
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: Şablon listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ScannerTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /scanner/search:
+    post:
+      tags: [Scanner]
+      summary: Filtrelerle tarama (Spot/Vadeli seçeneği)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScannerFilter' }
+      responses:
+        '200':
+          description: Sonuç listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ScannerResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------- REPORTS ----------
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Performans özeti (PnL, Winrate, Drawdown)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: symbol
+          schema: { type: string, example: BTCUSDT }
+        - in: query
+          name: robotId
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Özet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    RobotId:
+      in: path
+      name: robotId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Yetkisiz
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Bulunamadı
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Geçersiz istek
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    # ---------- AUTH ----------
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, example: 3600 }
+
+    # ---------- ROBOT ----------
+    Robot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "Spot Trend Robot" }
+        market:
+          type: string
+          enum: [spot, futures]
+          default: spot
+        symbol: { type: string, example: BTCUSDT }
+        side: { type: string, enum: [buy, sell, long, short] }
+        status: { type: string, enum: [active, paused, stopped], default: active }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        params:
+          type: object
+          description: |
+            İndikatör/filtre ayarları (EMA/RSI/ATR/ADX, SuperTrend, MACD, SL/TP vb.).
+            Plus/Pro özelliklerine göre genişler.
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RobotCreate:
+      type: object
+      required: [symbol, side]
+      properties:
+        name: { type: string }
+        market: { type: string, enum: [spot, futures], default: spot }
+        symbol: { type: string, example: BTCUSDT }
+        side: { type: string, enum: [buy, sell, long, short] }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        params:
+          type: object
+          additionalProperties: true
+    RobotUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        status: { type: string, enum: [active, paused, stopped] }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        params:
+          type: object
+          additionalProperties: true
+
+    Schedule:
+      type: object
+      description: |
+        Çalışma zamanlaması:
+        - immediate: hemen başlat
+        - window: her gün start-end saatleri arasında çalıştır (örn. 00:00–23:00)
+        - absolute: belirli tarih-saatte başlat/durdur
+      properties:
+        mode: { type: string, enum: [immediate, window, absolute], default: immediate }
+        window:
+          type: object
+          properties:
+            start: { type: string, example: "00:00" }
+            end:   { type: string, example: "23:00" }
+        startAt: { type: string, format: date-time }
+        stopAt:  { type: string, format: date-time }
+
+    # ---------- TESTS ----------
+    TestRequest:
+      type: object
+      required: [symbol, timeframe, params]
+      properties:
+        symbol: { type: string, example: BTCUSDT }
+        timeframe: { type: string, example: "15m" }
+        params:
+          type: object
+          description: İndikatör ve filtre parametreleri (EMA/RSI/ATR/ADX, ST, MACD)
+          additionalProperties: true
+
+    BacktestRequest:
+      allOf:
+        - $ref: '#/components/schemas/TestRequest'
+        - type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date-time }
+            to:   { type: string, format: date-time }
+
+    TestResult:
+      type: object
+      properties:
+        pnl: { type: number, example: 1250.75 }
+        winrate: { type: number, example: 0.62 }
+        maxDrawdown: { type: number, example: 0.18 }
+        trades:
+          type: array
+          items:
+            type: object
+            properties:
+              time: { type: string, format: date-time }
+              side: { type: string, enum: [buy, sell, long, short] }
+              qty: { type: number }
+              price: { type: number }
+              result: { type: number }
+
+    # ---------- SCANNER ----------
+    ScannerTemplate:
+      type: object
+      properties:
+        key: { type: string, example: "trend-strong" }
+        name: { type: string, example: "Güçlü Trend Coinler" }
+        description: { type: string }
+        market: { type: string, enum: [spot, futures], default: spot }
+    ScannerFilter:
+      type: object
+      properties:
+        market: { type: string, enum: [spot, futures], default: spot }
+        symbolWhitelist:
+          type: array
+          items: { type: string }
+        rules:
+          type: array
+          description: Basit kural listesi (örn. EMA50>EMA200, RSI<30)
+          items:
+            type: object
+            properties:
+              field: { type: string, example: "EMA50_gt_EMA200" }
+              op:    { type: string, enum: [gt, gte, lt, lte, eq, neq] }
+              value: { type: number }
+    ScannerResult:
+      type: object
+      properties:
+        symbol: { type: string, example: "BTCUSDT" }
+        change24h: { type: number, example: 0.0342 }
+        volume24h: { type: number, example: 125000000 }
+        score: { type: number, example: 0.82 }
+
+    # ---------- REPORTS ----------
+    ReportSummary:
+      type: object
+      properties:
+        pnlTotal: { type: number }
+        pnlDaily:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              pnl: { type: number }
+        winrate: { type: number }
+        maxDrawdown: { type: number }
+
+    # ---------- COMMON ----------
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
