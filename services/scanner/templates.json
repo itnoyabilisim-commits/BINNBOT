@@ -1,0 +1,4 @@
+[
+  { "key": "trend-strong", "name": "Güçlü Trend Coinler", "market": "spot" },
+  { "key": "rsi-oversold", "name": "RSI Düşük (Alım Fırsatı)", "market": "spot" }
+]
