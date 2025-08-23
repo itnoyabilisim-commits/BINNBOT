@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_USER: dev
+      POSTGRES_DB: binnbot
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports: ["5672:5672", "15672:15672"]
+  api-gateway:
+    image: node:20-alpine
+    working_dir: /srv
+    command: sh -c "node index.js"
+    volumes: ["../services/api-gateway:/srv"]
+    ports: ["8080:8080"]
+    depends_on: [postgres, redis, rabbitmq]

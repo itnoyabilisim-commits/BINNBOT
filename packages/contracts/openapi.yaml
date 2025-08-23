@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: BINNBOT API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      responses:
+        '200': { description: ok }
+  /robots:
+    get:
+      operationId: listRobots
+      responses:
+        '200': { description: list }
+    post:
+      operationId: createRobot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RobotCreate'
+      responses:
+        '201': { description: created }
+components:
+  schemas:
+    RobotCreate:
+      type: object
+      required: [symbol, side]
+      properties:
+        symbol: { type: string, example: BTCUSDT }
+        side:   { type: string, enum: [buy, sell, long, short] }

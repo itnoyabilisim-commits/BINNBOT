@@ -1,0 +1,13 @@
+asyncapi: 2.6.0
+info: { title: BINNBOT events, version: 1.0.0 }
+channels:
+  signals.v1:
+    publish:
+      message:
+        name: Signal
+        payload:
+          type: object
+          properties:
+            symbol: { type: string }
+            kind:   { type: string, enum: [buy, sell] }
+            ts:     { type: string, format: date-time }
