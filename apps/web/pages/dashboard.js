@@ -21,12 +21,12 @@ export default function Dashboard() {
     <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
       <h1>Dashboard</h1>
 
-      {/* Özet kartlar */}
+      {/* Özet kartlar (summary + dummy) */}
       <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
         <div style={{ flex: 1, padding: "20px", border: "1px solid #ccc", borderRadius: "8px" }}>
-          <h3>Günlük PnL</h3>
+          <h3>Günlük PnL (Son Gün)</h3>
           <p style={{ fontSize: "24px", color: stats.pnlDaily >= 0 ? "green" : "red" }}>
-            {stats.pnlDaily} ₺
+            {Number(stats.pnlDaily).toFixed(2)} ₺
           </p>
         </div>
         <div style={{ flex: 1, padding: "20px", border: "1px solid #ccc", borderRadius: "8px" }}>
