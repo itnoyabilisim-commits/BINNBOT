@@ -16,3 +16,12 @@
 ### Changed
 - `POST /robots`: `name` boş gelirse otomatik "Robot – SYMBOL – side" atanır.
 - `openapi.yaml`: `RobotCreate.name` açıklaması güncellendi.
+## [0.1.1] - 2025-08-24
+### Changed
+- `POST /robots`: `name` boş gelirse otomatik "Robot – SYMBOL – side" atanır.
+- `openapi.yaml`: `RobotCreate.name` açıklaması güncellendi.
+### Added
+- API Gateway: `/reports/execs` ve `/reports/summary` from/to query passthrough.
+- Rate limit: IP başına dakikada 60 istek (429).
+- `/scanner/search`: `template` veya `rules` zorunlu body validasyonu.
+- Frontend: robots PATCH/DELETE, inline düzenleme, reports from/to filtresi.
