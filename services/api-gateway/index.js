@@ -1,3 +1,4 @@
+import { login, verify } from "./auth.js";
 // services/api-gateway/index.js
 import http from "http";
 import { randomUUID } from "crypto";
