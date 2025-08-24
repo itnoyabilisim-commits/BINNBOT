@@ -1,7 +1,7 @@
 // services/api-gateway/index.js
 import http from "http";
 import { randomUUID } from "crypto";
-import { WebSocketServer } from "ws"; // WS proxy
+import { WebSocketServer } from "ws";
 import { readRobots, writeRobots } from "./storage.js";
 import { login, verify, issueToken, verifyToken } from "./auth.js";
 import { publishOrderRequested, sendExecutionToReporting } from "./events.js";
@@ -13,16 +13,18 @@ import {
 } from "../lib/binance.js";
 import { ensureExchangeInfo, getSymbolFilters } from "../lib/exchangeInfo.js";
 
-const SCANNER_URL     = process.env.SCANNER_URL     || "";
-const REPORTING_URL   = process.env.REPORTING_URL   || "";
-const INGESTOR_URL    = process.env.INGESTOR_URL    || "http://localhost:8091";
+// ==== ÇEVRE ====
+const SCANNER_URL       = process.env.SCANNER_URL       || "";
+const REPORTING_URL     = process.env.REPORTING_URL     || "";
+const INGESTOR_URL      = process.env.INGESTOR_URL      || "http://localhost:8091";
 const DASHBOARD_SYMBOLS = (process.env.DASHBOARD_SYMBOLS || "BTCUSDT,ETHUSDT")
   .split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
 
-// ==== rate limit (dakikada N) ====
+// ==== RATE LIMIT (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
-const rlMap = new Map();
+const rlMap = new Map(); // ip -> { count, start }
+
 function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
   const now = Date.now();
@@ -42,7 +44,7 @@ function rateLimit(req, res) {
   return true;
 }
 
-// ==== yardımcılar ====
+// ==== YARDIMCILAR ====
 function send(res, code, data, headers = {}) {
   const h = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...headers };
   res.writeHead(code, h);
@@ -62,8 +64,7 @@ function parseBody(req, res, cb) {
 async function safeFetch(url, init) {
   try {
     const r = await fetch(url, init);
-    let json = null;
-    const text = await r.text();
+    let json = null; const text = await r.text();
     try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
     if (!r.ok) return { ok: false, status: r.status, json: json || { code: "UPSTREAM_ERROR" } };
     return { ok: true, status: r.status, json };
@@ -71,7 +72,6 @@ async function safeFetch(url, init) {
     return { ok: false, status: 502, json: { code: "UPSTREAM_ERROR", message: String(e) } };
   }
 }
-
 // CORS preflight
 function preflight(req, res) {
   if (req.method === "OPTIONS") {
@@ -80,13 +80,12 @@ function preflight(req, res) {
       "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
     });
-    res.end();
-    return true;
+    res.end(); return true;
   }
   return false;
 }
 
-// ==== miktar yuvarlama & doğrulama (exchangeInfo) ====
+// ==== MİKTAR/YUVARLAMA & DOĞRULAMA (exchangeInfo) ====
 function roundToStep(x, step) {
   if (!step || step <= 0) return x;
   const p = Math.round(Math.log10(1 / step));
@@ -119,10 +118,9 @@ function validateOrderQtyPrice(symbol, type, quantity, price) {
   return { ok: true };
 }
 
+// ==== HTTP SERVER ====
 const server = http.createServer((req, res) => {
   if (preflight(req, res)) return;
-
-  // ==== RATE LIMIT ====
   if (!rateLimit(req, res)) return;
 
   // ====== SYSTEM ======
@@ -191,7 +189,6 @@ const server = http.createServer((req, res) => {
       if (!chk.ok) return error(res, "BAD_REQUEST", chk.message, 400);
       if (type === "MARKET" && !quantity) return error(res, "BAD_REQUEST", "MARKET için quantity gerekli", 400);
       if (type === "LIMIT" && (!price || !timeInForce)) return error(res, "BAD_REQUEST", "LIMIT için price ve timeInForce gerekli", 400);
-
       const params = { symbol, side, type, quantity, price, timeInForce };
       const r = await binanceRestSigned("POST", "/api/v3/order/test", params);
       if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
@@ -205,10 +202,8 @@ const server = http.createServer((req, res) => {
       await ensureExchangeInfo(false);
       const chk = validateOrderQtyPrice(symbol, type, quantity, price);
       if (!chk.ok) return error(res, "BAD_REQUEST", chk.message, 400);
-
       if (type === "MARKET" && !quantity) return error(res, "BAD_REQUEST", "MARKET için quantity gerekli", 400);
       if (type === "LIMIT" && (!price || !timeInForce)) return error(res, "BAD_REQUEST", "LIMIT için price ve timeInForce gerekli", 400);
-
       const params = { symbol, side, type, quantity, price, timeInForce, newClientOrderId: `bb-${Date.now()}` };
       const r = await binanceRestSigned("POST", "/api/v3/order", params);
       if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
@@ -239,7 +234,6 @@ const server = http.createServer((req, res) => {
       if (!body.symbol) return error(res, "BAD_REQUEST", "symbol gerekli", 400);
       if (!["buy","sell","long","short"].includes(body.side)) return error(res, "BAD_REQUEST", "side hatalı", 400);
       if (body.market && !["spot","futures"].includes(body.market)) return error(res, "BAD_REQUEST", "market hatalı", 400);
-
       const r = {
         id: randomUUID(),
         name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`,
@@ -280,8 +274,7 @@ const server = http.createServer((req, res) => {
       const list = readRobots(); const idx = list.findIndex(x => x.id === id);
       if (idx === -1) return error(res, "NOT_FOUND", "robot not found", 404);
       list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
-      writeRobots(list);
-      return send(res, 200, list[idx]);
+      writeRobots(list); return send(res, 200, list[idx]);
     });
   }
   if (req.url?.startsWith("/robots/") && req.method === "DELETE") {
@@ -367,7 +360,7 @@ const server = http.createServer((req, res) => {
   return error(res, "NOT_FOUND", "not found", 404);
 });
 
-// === Dashboard için WS proxy (market-ingestor'dan gerçek tick) ===
+// === Dashboard için WS proxy (market-ingestor + reporting summary) ===
 const wss = new WebSocketServer({ port: 8090 });
 
 async function fetchTick(symbol) {
@@ -375,25 +368,34 @@ async function fetchTick(symbol) {
   if (!r.ok) return { symbol, tick: null };
   return { symbol, tick: r.json?.tick || null };
 }
+function ymd(d) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+async function fetchSummary7d() {
+  if (!REPORTING_URL) return null;
+  const today = new Date(); const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const qs = `?from=${ymd(weekAgo)}&to=${ymd(today)}`;
+  const r = await safeFetch(`${REPORTING_URL}/summary${qs}`);
+  return r.ok ? r.json : null;
+}
 async function broadcastDashboard() {
-  if (wss.clients.size === 0) return; // client yoksa uğraşma
-  // ingestor'dan sembol tick'lerini paralel çek
+  if (wss.clients.size === 0) return;
   const promises = DASHBOARD_SYMBOLS.map(s => fetchTick(s));
   const results = await Promise.all(promises);
+  const summary7d = await fetchSummary7d();
   const payload = {
     ts: new Date().toISOString(),
     symbols: results.map(r => ({ symbol: r.symbol, bid: r.tick?.bid ?? null, ask: r.tick?.ask ?? null, ts: r.tick?.ts ?? null })),
-    // aşağıdakiler şimdilik dummy; ileride gerçek PnL/pozisyonla besleyeceğiz
-    pnlDaily: Number((Math.random() * 500 - 200).toFixed(2)),
-    openPositions: Math.floor(Math.random() * 5),
-    activeRobots: Math.floor(Math.random() * 20) + 1,
+    pnlDaily: summary7d?.pnlDaily?.slice(-1)?.[0]?.pnl ?? Number((Math.random() * 500 - 200).toFixed(2)),
+    openPositions: Math.floor(Math.random() * 5),    // ileride gerçek veri
+    activeRobots: Math.floor(Math.random() * 20) + 1 // ileride gerçek veri
   };
   const data = JSON.stringify(payload);
   for (const client of wss.clients) {
     try { client.send(data); } catch {}
   }
 }
-// 5 sn'de bir yayınla
 setInterval(broadcastDashboard, 5000);
 
-server.listen(8080, () => console.log(`api-gateway :8080 | ws://localhost:8090 | ingestor: ${INGESTOR_URL}`));
+server.listen(8080, () => console.log(`api-gateway running :8080 | ws://localhost:8090 | ingestor: ${INGESTOR_URL}`));
