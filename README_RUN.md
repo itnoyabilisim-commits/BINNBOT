@@ -12,5 +12,3 @@
 node services/api-gateway/index.js
 # başka tab:
 curl http://localhost:8080/healthz
-## Çalıştırma Rehberi
-Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
