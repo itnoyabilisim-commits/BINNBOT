@@ -147,20 +147,76 @@ const server = http.createServer((req, res) => {
     });
   }
 
-// REPORTS /execs proxy (from/to query'lerini ileri taşı)
-if (req.url.startsWith("/reports/execs") && req.method === "GET") {
-  const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
-  if (REPORTING_URL) {
-    (async () => {
-      const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-      const r = await safeFetch(`${REPORTING_URL}/execs${qs}`);
-      return send(res, r.ok ? r.status : 502, r.json);
-    })();
-  } else {
-    return send(res, 200, []); // dummy boş liste
+  // ROBOTS {id} PATCH  (gelişmiş validasyon)
+  if (req.url?.startsWith("/robots/") && req.method === "PATCH") {
+    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const id = req.url.split("/")[2];
+
+    return parseBody(req, res, (body) => {
+      // Validasyon
+      if (body.market && !["spot","futures"].includes(body.market)) {
+        return send(res, 400, { code: "BAD_REQUEST", message: "market hatalı" });
+      }
+      if (body.side && !["buy","sell","long","short"].includes(body.side)) {
+        return send(res, 400, { code: "BAD_REQUEST", message: "side hatalı" });
+      }
+      if (body.status && !["active","paused","stopped"].includes(body.status)) {
+        return send(res, 400, { code: "BAD_REQUEST", message: "status hatalı" });
+      }
+      if (body.schedule) {
+        const mode = body.schedule.mode || "immediate";
+        if (!["immediate","window","absolute"].includes(mode)) {
+          return send(res, 400, { code: "BAD_REQUEST", message: "schedule.mode hatalı" });
+        }
+        if (mode === "window") {
+          const w = body.schedule.window || {};
+          if (!w.start || !w.end) {
+            return send(res, 400, { code: "BAD_REQUEST", message: "schedule.window.start/end gerekli" });
+          }
+        }
+        if (mode === "absolute") {
+          if (!body.schedule.startAt && !body.schedule.stopAt) {
+            return send(res, 400, { code: "BAD_REQUEST", message: "schedule.startAt veya schedule.stopAt gerekli" });
+          }
+        }
+      }
+
+      const list = readRobots();
+      const idx = list.findIndex(x => x.id === id);
+      if (idx === -1) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
+
+      list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
+      writeRobots(list);
+      return send(res, 200, list[idx]);
+    });
   }
-  return;
-}
+
+  // ROBOTS {id} DELETE
+  if (req.url?.startsWith("/robots/") && req.method === "DELETE") {
+    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const id = req.url.split("/")[2];
+    const list = readRobots();
+    const exists = list.some(x => x.id === id);
+    if (!exists) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
+    writeRobots(list.filter(x => x.id !== id));
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
+    return res.end();
+  }
+
+  // REPORTS /execs proxy (from/to query'lerini ileri taşı)
+  if (req.url.startsWith("/reports/execs") && req.method === "GET") {
+    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    if (REPORTING_URL) {
+      (async () => {
+        const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+        const r = await safeFetch(`${REPORTING_URL}/execs${qs}`);
+        return send(res, r.ok ? r.status : 502, r.json);
+      })();
+    } else {
+      return send(res, 200, []); // dummy boş liste
+    }
+    return;
+  }
 
   // REPORTS /summary proxy (from/to query'lerini ileri taşı)
   if (req.url.startsWith("/reports/summary") && req.method === "GET") {
@@ -207,7 +263,7 @@ if (req.url.startsWith("/reports/execs") && req.method === "GET") {
         return send(res, r.ok ? r.status : 502, r.json);
       });
     } else {
-      return parseBody(req, res, (body) => {
+      return parseBody(req, res, () => {
         // gateway-dummy: scanner yoksa basit cevap
         return send(res, 200, [
           { symbol: "BTCUSDT", change24h: 0.034, volume24h: 250000000, score: 0.82 },
