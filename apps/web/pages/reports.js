@@ -6,12 +6,15 @@ export default function Reports() {
   const [summary, setSummary] = useState(null);
   const [execs, setExecs] = useState([]);
   const [msg, setMsg] = useState("");
+
+  // filtreler
   const [from, setFrom] = useState(""); // YYYY-MM-DD
   const [to, setTo] = useState("");
+  const [limit, setLimit] = useState(200); // execs limiti
 
   function buildQS(obj) {
     const params = new URLSearchParams();
-    Object.entries(obj).forEach(([k, v]) => { if (v) params.set(k, v); });
+    Object.entries(obj).forEach(([k, v]) => { if (v !== "" && v !== null && v !== undefined) params.set(k, v); });
     const s = params.toString();
     return s ? `?${s}` : "";
   }
@@ -26,7 +29,7 @@ export default function Reports() {
       setMsg("Özet alınamadı (login gerekebilir)");
     }
     try {
-      const ex = await apiGet(`/reports/execs${qs}`);
+      const ex = await apiGet(`/reports/execs${buildQS({ from, to, limit })}`);
       if (Array.isArray(ex)) setExecs(ex);
     } catch {}
   }
@@ -39,8 +42,8 @@ export default function Reports() {
     <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
       <h1>Raporlar</h1>
 
-      {/* Tarih filtresi */}
-      <div style={{ display: "flex", gap: 10, margin: "10px 0 20px" }}>
+      {/* Tarih + limit filtresi */}
+      <div style={{ display: "flex", gap: 10, margin: "10px 0 20px", alignItems: "end" }}>
         <div>
           <label>From</label><br />
           <input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} />
@@ -49,9 +52,19 @@ export default function Reports() {
           <label>To</label><br />
           <input type="date" value={to} onChange={(e)=>setTo(e.target.value)} />
         </div>
+        <div>
+          <label>Limit (execs)</label><br />
+          <input
+            type="number"
+            min={1}
+            value={limit}
+            onChange={(e)=> setLimit(Number(e.target.value || 200))}
+            style={{ width: 90 }}
+          />
+        </div>
         <button
           onClick={load}
-          style={{ alignSelf: "end", background: "#F4B400", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}
+          style={{ background: "#F4B400", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}
         >
           Uygula
         </button>
