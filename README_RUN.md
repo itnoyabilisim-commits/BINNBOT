@@ -29,4 +29,4 @@ Yerel `deploy/docker-compose.dev.yml` içindeki TimescaleDB ayarları:
 - db: `tsdb`
 - port: `5433` (host) → `5432` (container)
 
-Örnek:
+Örnek:> DATABASE_URL yoksa reporting **bellek modunda** çalışır (kalıcılık olmaz).
