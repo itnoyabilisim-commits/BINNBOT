@@ -16,9 +16,7 @@ function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
   const now = Date.now();
   const entry = rlMap.get(ip) || { count: 0, start: now };
-  if (now - entry.start > WINDOW_MS) {
-    entry.count = 0; entry.start = now;
-  }
+  if (now - entry.start > WINDOW_MS) { entry.count = 0; entry.start = now; }
   entry.count += 1;
   rlMap.set(ip, entry);
   if (entry.count > RATE_LIMIT) {
@@ -119,7 +117,7 @@ const server = http.createServer((req, res) => {
 
       const r = {
         id: randomUUID(),
-        name: body.name || "Robot",
+        name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`,
         market: body.market || "spot",
         symbol: body.symbol,
         side: body.side,
@@ -253,24 +251,37 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // SCANNER /search  (template VEYA rules zorunlu)
   if (req.url === "/scanner/search" && req.method === "POST") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
-    if (SCANNER_URL) {
-      return parseBody(req, res, async (body) => {
+
+    return parseBody(req, res, async (body) => {
+      const { template, rules } = body || {};
+      const hasTemplate = typeof template === "string" && template.length > 0;
+      const hasRules = Array.isArray(rules) && rules.length > 0;
+
+      if (!hasTemplate && !hasRules) {
+        return send(res, 400, {
+          code: "BAD_REQUEST",
+          message: "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }"
+        });
+      }
+
+      if (SCANNER_URL) {
         const r = await safeFetch(`${SCANNER_URL}/search`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
         });
         return send(res, r.ok ? r.status : 502, r.json);
-      });
-    } else {
-      return parseBody(req, res, () => {
+      } else {
         // gateway-dummy: scanner yoksa basit cevap
         return send(res, 200, [
           { symbol: "BTCUSDT", change24h: 0.034, volume24h: 250000000, score: 0.82 },
           { symbol: "ETHUSDT", change24h: 0.028, volume24h: 180000000, score: 0.74 },
         ]);
-      });
-    }
+      }
+    });
   }
 
   // fallback
