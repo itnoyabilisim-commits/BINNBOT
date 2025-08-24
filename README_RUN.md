@@ -109,3 +109,25 @@ curl "http://localhost:8080/reports/summary?from=2025-08-01&to=2025-08-07"   -H 
 ```bash
 curl "http://localhost:8080/reports/execs?from=2025-08-01&to=2025-08-07&limit=100"   -H "Authorization: Bearer <ACCESS_TOKEN>"
 ```
+### Binance – Hızlı cURL
+```bash
+# 1) Server time
+curl http://localhost:8080/exchange/binance/time
+
+# 2) Hesap bilgisi (API key/secret gerekir)
+curl http://localhost:8080/exchange/binance/account
+
+# 3) Test order (sandbox)
+curl -X POST http://localhost:8080/exchange/binance/order/test \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","side":"BUY","type":"MARKET","quantity":0.001}'
+
+# 4) Gerçek emir (DİKKAT: SANDBOX false ise gerçek borsaya gider)
+curl -X POST http://localhost:8080/exchange/binance/order \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","side":"BUY","type":"MARKET","quantity":0.001}'
+
+# 5) Emir iptal
+curl -X DELETE http://localhost:8080/exchange/binance/order \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","orderId":123456}'
