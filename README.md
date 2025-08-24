@@ -25,3 +25,13 @@ Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
 ## Navigasyon (Web)
 Uygulama içinde üst menü: **Dashboard · Testler · Robotlar · Tarayıcı · Raporlar · Etkileşim · Destek · Üyelik · Çıkış**  
 (Login sayfasında gizlenir; diğer sayfalarda görünür.)
+## Modüller (Kısa Özet)
+- apps/web: Kullanıcı arayüzü (Next.js)
+- apps/admin: Yönetici paneli (Next.js)
+- services/api-gateway: REST/Proxy + WS (rate-limit, auth, robots, scanner, reports, binance)
+- services/market-ingestor: Binance WS tick toplama
+- services/reporting: /summary & /execs (DB/bellek modları)
+- services/scanner: template/rules ile tarama
+- services/notifier: e-posta/SMS/push (stub)
+- packages/contracts: OpenAPI/AsyncAPI + şemalar
+- docs/product: API dokümanları (robots, reports, scanner, binance-curl)
