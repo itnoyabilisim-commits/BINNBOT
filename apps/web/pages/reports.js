@@ -3,34 +3,64 @@ import { useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
 
 export default function Reports() {
-  const [summary, setSummary] = useState(null); // { pnlTotal, winrate, maxDrawdown, pnlDaily: [...] } veya array
-  const [execs, setExecs] = useState([]);       // /reports/execs dönen liste
+  const [summary, setSummary] = useState(null);
+  const [execs, setExecs] = useState([]);
   const [msg, setMsg] = useState("");
+  const [from, setFrom] = useState(""); // YYYY-MM-DD
+  const [to, setTo] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await apiGet("/reports/summary");
-        setSummary(s);
-      } catch (e) {
-        setMsg("Özet alınamadı (login gerekebilir)");
-      }
-      try {
-        const ex = await apiGet("/reports/execs");
-        // gateway proxy yoksa 404 gelebilir; o durumda görmezden gel
-        if (Array.isArray(ex)) setExecs(ex);
-      } catch {}
-    })();
-  }, []);
+  async function load() {
+    setMsg("");
+    try {
+      const qs = buildQS({ from, to });
+      const s = await apiGet(`/reports/summary${qs}`);
+      setSummary(s);
+    } catch (e) {
+      setMsg("Özet alınamadı (login gerekebilir)");
+    }
+    try {
+      const ex = await apiGet(`/reports/execs`);
+      if (Array.isArray(ex)) setExecs(ex);
+    } catch {}
+  }
+
+  useEffect(() => { load(); }, []);
+
+  function buildQS(obj) {
+    const params = new URLSearchParams();
+    Object.entries(obj).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const s = params.toString();
+    return s ? `?${s}` : "";
+  }
 
   const isArraySummary = Array.isArray(summary);
 
   return (
     <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
       <h1>Raporlar</h1>
-      {msg && <p style={{ color: "crimson" }}>{msg}</p>}
 
-      {/* Özet: summary objesi */}
+      {/* Tarih filtresi */}
+      <div style={{ display: "flex", gap: 10, margin: "10px 0 20px" }}>
+        <div>
+          <label>From</label><br />
+          <input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} />
+        </div>
+        <div>
+          <label>To</label><br />
+          <input type="date" value={to} onChange={(e)=>setTo(e.target.value)} />
+        </div>
+        <button
+          onClick={load}
+          style={{ alignSelf: "end", background: "#F4B400", border: "none", padding: "8px 14px", borderRadius: 6, cursor: "pointer" }}
+        >
+          Uygula
+        </button>
+      </div>
+
+      {msg && <p style={{ color: "crimson" }}>{msg}</p>}
+      {!summary && !msg && <p>Yükleniyor...</p>}
+
+      {/* Özet (object) */}
       {!isArraySummary && summary && (
         <>
           <div style={{ display: "flex", gap: 20, marginBottom: 20 }}>
@@ -58,7 +88,7 @@ export default function Reports() {
         </>
       )}
 
-      {/* Özet: summary array (DB'den satırlar) */}
+      {/* Özet (array) – DB'den satırlar */}
       {isArraySummary && summary && (
         <>
           <h2>Özet (DB Son Kayıtlar)</h2>
