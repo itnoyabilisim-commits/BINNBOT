@@ -129,7 +129,26 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ... (PATCH, DELETE, TESTS, SCANNER, REPORTS summary aynı kalıyor)
+  // REPORTS /summary proxy (from/to query'lerini ileri taşı)
+  if (req.url.startsWith("/reports/summary") && req.method === "GET") {
+    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    if (REPORTING_URL) {
+      (async () => {
+        const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+        const r = await safeFetch(`${REPORTING_URL}/summary${qs}`);
+        return send(res, r.ok ? r.status : 502, r.json);
+      })();
+    } else {
+      // dummy
+      return send(res, 200, {
+        pnlTotal: 42031, winrate: 0.61, maxDrawdown: 0.22,
+        pnlDaily: [{ date: "2025-08-01", pnl: 1200 }, { date: "2025-08-02", pnl: -340 }],
+      });
+    }
+    return;
+  }
+
+  // ... (PATCH, DELETE, TESTS, SCANNER diğerleri aynı)
 
   send(res, 404, "not found");
 });
