@@ -27,27 +27,26 @@
 ---
 
 ## M2 – PLUS (2–3 hafta)
-**Hedef: Spot robot gerçek akış + tarayıcı gerçek filtreleme + raporlama DB**
+**Tamamlananlar**
+- JWT refresh flow (gateway + frontend)
+- Robot Exec → Reporting /execs POST (simülasyon)
+- Scanner: filtre motoru (EMA/RSI/ATR/ADX) + templates
+- Reporting: /summary from–to, bellek/DB modları
+- Web: Robots PATCH/DELETE + inline edit, Reports from/to/limit
+- Gateway: rate-limit (60 req/min), error standardization
+- Binance: time, account, test/real order, cancel, ping; exchangeInfo cache + minQty/stepSize/minNotional kontrolü
 
-- [x] JWT refresh flow (gateway: /auth/refresh + frontend auto-refresh)
-- [x] Robot Exec: execution simülasyonu → reporting /execs POST
-- [x] Scanner: basit filtre motoru (EMA/RSI/ATR/ADX) + templates
-- [ ] Reporting: Postgres kalıcı şema ve /summary gerçek veriden
-- [ ] Web: Robots/Reports sayfalarını gerçek API’ye bağlama iyileştirmeleri (sil/güncelle)
-- [ ] Gateway: rate-limit & error-handling (temel)
-- [ ] Çevre değişkenleri: README_RUN.md’ye servis URL notları (prod/stage)
-
----
+**Kalanlar**
+- Reporting: SQL-based /summary (tam) ve cursor’lı /execs
+- Notifier: e-posta/SMS/Push provider adapterleri
+- Web: Dashboard canlı kartlar (WS)
+- Admin: RBAC & Acil Stop (2FA + çift onay)
+- CI: unit/contract/integration pipeline
 
 ## M3 – PRO & Admin (2–3 hafta)
-**Hedef: Vadeli (futures) robot + tam Admin modülleri + bildirimler**
-
-- [ ] Futures: active/backtest/robot uçları (kontratla)
-- [ ] Admin: Acil Stop akışı (dry-run → onay → rapor)
-- [ ] Admin: Moderasyon & Audit arayüzleri gerçek veriyle
-- [ ] Notifier: e-posta/SMS/push sağlayıcı entegrasyonu
-- [ ] Status sayfası & servis sağlık (ops)
-- [ ] Güvenlik: WORM audit storage, legal hold süreçleri (doküman + örnek akış)
+- Futures (vadeli) robot/test uçları
+- Admin: Moderasyon, Audit (WORM + export)
+- Notifier prod entegrasyonları
 
 ---
 
