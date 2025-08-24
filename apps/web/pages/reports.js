@@ -9,29 +9,29 @@ export default function Reports() {
   const [from, setFrom] = useState(""); // YYYY-MM-DD
   const [to, setTo] = useState("");
 
-  async function load() {
-    setMsg("");
-    try {
-      const qs = buildQS({ from, to });
-      const s = await apiGet(`/reports/summary${qs}`);
-      setSummary(s);
-    } catch (e) {
-      setMsg("Özet alınamadı (login gerekebilir)");
-    }
-    try {
-      const ex = await apiGet(`/reports/execs`);
-      if (Array.isArray(ex)) setExecs(ex);
-    } catch {}
-  }
-
-  useEffect(() => { load(); }, []);
-
   function buildQS(obj) {
     const params = new URLSearchParams();
     Object.entries(obj).forEach(([k, v]) => { if (v) params.set(k, v); });
     const s = params.toString();
     return s ? `?${s}` : "";
   }
+
+  async function load() {
+    setMsg("");
+    const qs = buildQS({ from, to });
+    try {
+      const s = await apiGet(`/reports/summary${qs}`);
+      setSummary(s);
+    } catch (e) {
+      setMsg("Özet alınamadı (login gerekebilir)");
+    }
+    try {
+      const ex = await apiGet(`/reports/execs${qs}`);
+      if (Array.isArray(ex)) setExecs(ex);
+    } catch {}
+  }
+
+  useEffect(() => { load(); }, []);
 
   const isArraySummary = Array.isArray(summary);
 
