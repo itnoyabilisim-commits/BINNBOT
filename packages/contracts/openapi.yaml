@@ -1,22 +1,72 @@
 openapi: 3.0.3
 info:
   title: BINNBOT API
-  version: 1.0.0
+  version: 0.1.1
+  description: |
+    BINNBOT – Spot & Vadeli Al-Sat Robotları için API sözleşmesi.
+    Bu doküman frontend ve backend ekipleri için referans olarak kullanılacaktır.
+
 servers:
   - url: http://localhost:8080
+    description: Local API Gateway
+
 paths:
-  /healthz:
-    get:
-      operationId: healthz
+  /auth/login:
+    post:
+      summary: Kullanıcı girişi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
       responses:
-        '200': { description: ok }
+        "200":
+          description: JWT tokenları
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+
+  /auth/refresh:
+    post:
+      summary: Refresh token ile yeni access al
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: Yeni access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+
   /robots:
     get:
-      operationId: listRobots
+      summary: Kullanıcı robotlarını listele
       responses:
-        '200': { description: list }
+        "200":
+          description: Robot listesi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Robot' }
+
     post:
-      operationId: createRobot
+      summary: Yeni robot oluştur
       requestBody:
         required: true
         content:
@@ -24,9 +74,159 @@ paths:
             schema:
               $ref: '#/components/schemas/RobotCreate'
       responses:
-        '201': { description: created }
+        "201":
+          description: Robot oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Robot' }
+
+  /robots/{id}:
+    patch:
+      summary: Robot güncelle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RobotUpdate'
+      responses:
+        "200":
+          description: Güncellenmiş robot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Robot' }
+
+    delete:
+      summary: Robot sil
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Robot silindi
+
+  /scanner/templates:
+    get:
+      summary: Hazır tarama şablonları
+      responses:
+        "200":
+          description: Şablon listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    key: { type: string }
+                    name: { type: string }
+                    market: { type: string }
+
+  /scanner/search:
+    post:
+      summary: Sembol tarama
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  properties:
+                    market: { type: string, default: spot }
+                    template: { type: string }
+                - type: object
+                  properties:
+                    market: { type: string, default: spot }
+                    rules:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          field: { type: string }
+                          op: { type: string, enum: [gt, gte, lt, lte, eq, neq] }
+                          value: { type: number }
+                          valueField: { type: string }
+      responses:
+        "200":
+          description: Tarama sonucu
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    symbol: { type: string }
+                    change24h: { type: number }
+                    volume24h: { type: number }
+                    score: { type: number }
+
+  /reports/summary:
+    get:
+      summary: PnL özet raporu
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Özet rapor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pnlTotal: { type: number }
+                  winrate: { type: number }
+                  maxDrawdown: { type: number }
+                  pnlDaily:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string }
+                        pnl: { type: number }
+
+  /reports/execs:
+    get:
+      summary: İşlem kayıtları
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: İşlem listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Execution'
+
 components:
   schemas:
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+
     RobotCreate:
       type: object
       properties:
@@ -38,8 +238,7 @@ components:
           type: string
           enum: [spot, futures]
           default: spot
-        symbol:
-          type: string
+        symbol: { type: string }
         side:
           type: string
           enum: [buy, sell, long, short]
@@ -47,3 +246,48 @@ components:
           $ref: '#/components/schemas/Schedule'
         params:
           type: object
+
+    RobotUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        status: { type: string, enum: [active, paused, stopped] }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        params: { type: object }
+
+    Robot:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        market: { type: string }
+        symbol: { type: string }
+        side: { type: string }
+        status: { type: string }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        params: { type: object }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    Schedule:
+      type: object
+      properties:
+        mode: { type: string, enum: [immediate, window, absolute] }
+        window:
+          type: object
+          properties:
+            start: { type: string }
+            end: { type: string }
+        startAt: { type: string, format: date-time }
+        stopAt: { type: string, format: date-time }
+
+    Execution:
+      type: object
+      properties:
+        robotId: { type: string }
+        symbol: { type: string }
+        side: { type: string }
+        qty: { type: number }
+        price: { type: number }
+        pnl: { type: number }
+        ts: { type: string, format: date-time }
