@@ -1,7 +1,7 @@
 // services/api-gateway/index.js
 import http from "http";
 import { randomUUID } from "crypto";
-import { WebSocketServer } from "ws"; // ← WS proxy için
+import { WebSocketServer } from "ws"; // WS proxy
 import { readRobots, writeRobots } from "./storage.js";
 import { login, verify, issueToken, verifyToken } from "./auth.js";
 import { publishOrderRequested, sendExecutionToReporting } from "./events.js";
@@ -13,8 +13,11 @@ import {
 } from "../lib/binance.js";
 import { ensureExchangeInfo, getSymbolFilters } from "../lib/exchangeInfo.js";
 
-const SCANNER_URL   = process.env.SCANNER_URL   || "";
-const REPORTING_URL = process.env.REPORTING_URL || "";
+const SCANNER_URL     = process.env.SCANNER_URL     || "";
+const REPORTING_URL   = process.env.REPORTING_URL   || "";
+const INGESTOR_URL    = process.env.INGESTOR_URL    || "http://localhost:8091";
+const DASHBOARD_SYMBOLS = (process.env.DASHBOARD_SYMBOLS || "BTCUSDT,ETHUSDT")
+  .split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
 
 // ==== rate limit (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
@@ -144,7 +147,6 @@ const server = http.createServer((req, res) => {
   }
 
   // ====== BINANCE (REST) ======
-  // ping
   if (req.url === "/exchange/binance/ping" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/ping");
@@ -152,7 +154,6 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, { ping: "pong", base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
     })(); return;
   }
-  // server time
   if (req.url === "/exchange/binance/time" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/time");
@@ -160,7 +161,6 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
     })(); return;
   }
-  // exchangeInfo refresh (cache)
   if (req.url === "/exchange/binance/exchangeInfo/refresh" && req.method === "POST") {
     (async () => {
       const r = await ensureExchangeInfo(true);
@@ -168,7 +168,6 @@ const server = http.createServer((req, res) => {
       return send(res, 200, { ok: true, fromCache: r.fromCache === true });
     })(); return;
   }
-  // account (SIGNED)
   if (req.url === "/exchange/binance/account" && req.method === "GET") {
     (async () => {
       const r = await binanceRestSigned("GET", "/api/v3/account");
@@ -176,7 +175,6 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, r.json);
     })(); return;
   }
-  // exchangeInfo (public pass-through)
   if (req.url.startsWith("/exchange/binance/exchangeInfo") && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/exchangeInfo");
@@ -184,7 +182,6 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, r.json);
     })(); return;
   }
-  // test order (SIGNED) – minQty/stepSize kontrolü
   if (req.url === "/exchange/binance/order/test" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
@@ -201,7 +198,6 @@ const server = http.createServer((req, res) => {
       return send(res, 200, r.json || { ok: true });
     });
   }
-  // real order place (SIGNED) – minQty/stepSize kontrolü
   if (req.url === "/exchange/binance/order" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
@@ -219,7 +215,6 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, r.json);
     });
   }
-  // cancel order (SIGNED)
   if (req.url === "/exchange/binance/order" && req.method === "DELETE") {
     return parseBody(req, res, async (body) => {
       const { symbol, orderId, origClientOrderId } = body || {};
@@ -372,20 +367,33 @@ const server = http.createServer((req, res) => {
   return error(res, "NOT_FOUND", "not found", 404);
 });
 
-// === Dashboard için WS proxy (dummy) ===
-// Ayrı bir portta basit WS; ileride market-ingestor verisine bağlayacağız
+// === Dashboard için WS proxy (market-ingestor'dan gerçek tick) ===
 const wss = new WebSocketServer({ port: 8090 });
-wss.on("connection", (ws) => {
-  const interval = setInterval(() => {
-    ws.send(JSON.stringify({
-      pnlDaily: Number((Math.random() * 500 - 200).toFixed(2)),
-      openPositions: Math.floor(Math.random() * 5),
-      activeRobots: Math.floor(Math.random() * 20) + 1,
-      ts: new Date().toISOString()
-    }));
-  }, 5000);
-  ws.on("close", () => clearInterval(interval));
-  ws.on("error", () => clearInterval(interval));
-});
 
-server.listen(8080, () => console.log("api-gateway running on :8080, ws://localhost:8090"));
+async function fetchTick(symbol) {
+  const r = await safeFetch(`${INGESTOR_URL}/ticks?symbol=${encodeURIComponent(symbol)}`);
+  if (!r.ok) return { symbol, tick: null };
+  return { symbol, tick: r.json?.tick || null };
+}
+async function broadcastDashboard() {
+  if (wss.clients.size === 0) return; // client yoksa uğraşma
+  // ingestor'dan sembol tick'lerini paralel çek
+  const promises = DASHBOARD_SYMBOLS.map(s => fetchTick(s));
+  const results = await Promise.all(promises);
+  const payload = {
+    ts: new Date().toISOString(),
+    symbols: results.map(r => ({ symbol: r.symbol, bid: r.tick?.bid ?? null, ask: r.tick?.ask ?? null, ts: r.tick?.ts ?? null })),
+    // aşağıdakiler şimdilik dummy; ileride gerçek PnL/pozisyonla besleyeceğiz
+    pnlDaily: Number((Math.random() * 500 - 200).toFixed(2)),
+    openPositions: Math.floor(Math.random() * 5),
+    activeRobots: Math.floor(Math.random() * 20) + 1,
+  };
+  const data = JSON.stringify(payload);
+  for (const client of wss.clients) {
+    try { client.send(data); } catch {}
+  }
+}
+// 5 sn'de bir yayınla
+setInterval(broadcastDashboard, 5000);
+
+server.listen(8080, () => console.log(`api-gateway :8080 | ws://localhost:8090 | ingestor: ${INGESTOR_URL}`));
