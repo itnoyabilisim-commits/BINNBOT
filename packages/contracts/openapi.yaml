@@ -29,7 +29,21 @@ components:
   schemas:
     RobotCreate:
       type: object
-      required: [symbol, side]
       properties:
-        symbol: { type: string, example: BTCUSDT }
-        side:   { type: string, enum: [buy, sell, long, short] }
+        name:
+          type: string
+          description: |
+            Robot adı (opsiyonel). Boş bırakılırsa otomatik "Robot – {symbol} – {side}" olarak atanır.
+        market:
+          type: string
+          enum: [spot, futures]
+          default: spot
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell, long, short]
+        schedule:
+          $ref: '#/components/schemas/Schedule'
+        params:
+          type: object
