@@ -16,3 +16,9 @@ Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
 2. Korumalı sayfalarda (_app.js): token yoksa /login’e yönlendir
 3. API çağrısı 401 dönerse (api.js): /auth/refresh ile yeni access alınır, istek tekrar edilir
 4. /logout → tokenlar temizlenir, /login’e yönlendirilir
+## M2 (PLUS) Durumu – Özet
+- JWT refresh flow ✓ (frontend auto-refresh)
+- Robot Exec → Reporting /execs POST ✓ (simülasyon)
+- Scanner gerçek filtre motoru (EMA/RSI/ATR/ADX) ✓
+- Reporting /summary from–to filtresi ✓
+- Kalan: Reporting kalıcı DB şeması, gateway rate-limit iyileştirmeleri, web API bağları için ek UX
