@@ -28,6 +28,7 @@ Dashboard · Testler · Robotlar · Tarayıcı · Raporlar · Etkileşim · Dest
 Roller: SuperAdmin, Admin, Support, Moderator, Content, Analyst, Billing
 - Modüller: Kullanıcı, Plan&Fatura, Robot Monitörü(+Acil Stop), Test&Tarayıcı, CMS, Etkileşim&Moderasyon, Destek, Bildirim&Entegrasyon, Sistem Durumu&Operasyon, Audit&Güvenlik.
 - Audit: WORM + hash-zinciri + timestamp + legal hold; arama & imzalı export.
+- Sistem Durumu: servislerin `/healthz` özetini gösterir (bkz. `docs/product/admin-system-health.md`)
 
 ## 5) Planlar & Fiyatlandırma
 - Plus: ₺1500/ay · Yıllık efektif ₺1000/ay
