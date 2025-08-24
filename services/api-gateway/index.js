@@ -1,5 +1,5 @@
-import { login, verify } from "./auth.js";
 // services/api-gateway/index.js
+import { login, verify } from "./auth.js";
 import http from "http";
 import { randomUUID } from "crypto";
 import { readRobots, writeRobots } from "./storage.js";
