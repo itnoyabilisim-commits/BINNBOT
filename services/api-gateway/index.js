@@ -147,19 +147,20 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  // REPORTS /execs proxy
-  if (req.url.startsWith("/reports/execs") && req.method === "GET") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
-    if (REPORTING_URL) {
-      (async () => {
-        const r = await safeFetch(`${REPORTING_URL}/execs`);
-        return send(res, r.ok ? r.status : 502, r.json);
-      })();
-    } else {
-      return send(res, 200, []); // dummy boş liste
-    }
-    return;
+// REPORTS /execs proxy (from/to query'lerini ileri taşı)
+if (req.url.startsWith("/reports/execs") && req.method === "GET") {
+  const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+  if (REPORTING_URL) {
+    (async () => {
+      const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+      const r = await safeFetch(`${REPORTING_URL}/execs${qs}`);
+      return send(res, r.ok ? r.status : 502, r.json);
+    })();
+  } else {
+    return send(res, 200, []); // dummy boş liste
   }
+  return;
+}
 
   // REPORTS /summary proxy (from/to query'lerini ileri taşı)
   if (req.url.startsWith("/reports/summary") && req.method === "GET") {
