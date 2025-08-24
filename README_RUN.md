@@ -12,3 +12,5 @@
 node services/api-gateway/index.js
 # başka tab:
 curl http://localhost:8080/healthz
+## Admin Kısayolları
+- Sistem Durumu (health): bkz. [docs/product/admin-system-health.md](./docs/product/admin-system-health.md)
