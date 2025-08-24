@@ -30,6 +30,10 @@
 - Web: Üst menü (Dashboard, Testler, Robotlar, Tarayıcı, Raporlar, Etkileşim, Destek, Üyelik, Çıkış)
 - Admin: Sistem Durumu sayfasına hızlı butonlar (Son 24 saat execs, Son 7 gün summary)
 - Gateway: /reports/summary ve /reports/execs için from/to passthrough, rate-limit (60 req/min)
+ ## [0.2.0] - 2025-08-24 (M2 Snapshot)
+### Added
+- Binance: /exchange/binance/ping
+- Binance: exchangeInfo cache + minQty/stepSize/minNotional doğrulama (order/test & order)
 
 ### Changed
 - Scanner: Gerçek filtre motoru (EMA/RSI/ATR/ADX) + template desteği
