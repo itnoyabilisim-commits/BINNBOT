@@ -10,7 +10,7 @@ const REPORTING_URL = process.env.REPORTING_URL || "";
 // ==== rate limit (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
-const rlMap = new Map();
+const rlMap = new Map(); // ip -> { count, start }
 
 function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
@@ -37,14 +37,20 @@ function send(res, code, data, headers = {}) {
   res.writeHead(code, h);
   res.end(typeof data === "string" ? data : JSON.stringify(data));
 }
+
+function error(res, code, message, status = 400, headers = {}) {
+  return send(res, status, { code, message }, headers);
+}
+
 function parseBody(req, res, cb) {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     try { cb(JSON.parse(body || "{}")); }
-    catch { send(res, 400, { code: "BAD_REQUEST", message: "invalid JSON" }); }
+    catch { return error(res, "BAD_REQUEST", "invalid JSON", 400); }
   });
 }
+
 async function safeFetch(url, init) {
   try {
     const r = await fetch(url, init);
@@ -87,13 +93,14 @@ const server = http.createServer((req, res) => {
   if (req.url === "/auth/login" && req.method === "POST") {
     return parseBody(req, res, ({ email, password }) => {
       try { return send(res, 200, login(email, password)); }
-      catch (e) { return send(res, 400, { code: "BAD_REQUEST", message: e.message }); }
+      catch (e) { return error(res, "BAD_REQUEST", e.message || "login failed", 400); }
     });
   }
+
   if (req.url === "/auth/refresh" && req.method === "POST") {
     return parseBody(req, res, ({ refreshToken }) => {
       const payload = refreshToken ? verifyToken(refreshToken, "refresh") : null;
-      if (!payload) return send(res, 401, { code: "UNAUTHORIZED", message: "invalid refresh token" });
+      if (!payload) return error(res, "UNAUTHORIZED", "invalid refresh token", 401);
       const accessToken = issueToken(payload.sub, 3600, "access");
       return send(res, 200, { accessToken, refreshToken, expiresIn: 3600 });
     });
@@ -101,19 +108,20 @@ const server = http.createServer((req, res) => {
 
   // ROBOTS
   if (req.url === "/robots" && req.method === "GET") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     return send(res, 200, { items: readRobots() });
   }
+
   if (req.url === "/robots" && req.method === "POST") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     return parseBody(req, res, (body) => {
-      if (!body.symbol) return send(res, 400, { code: "BAD_REQUEST", message: "symbol gerekli" });
-      if (!["buy","sell","long","short"].includes(body.side)) return send(res, 400, { code: "BAD_REQUEST", message: "side hatalı" });
-      if (body.market && !["spot","futures"].includes(body.market)) return send(res, 400, { code: "BAD_REQUEST", message: "market hatalı" });
+      if (!body.symbol) return error(res, "BAD_REQUEST", "symbol gerekli", 400);
+      if (!["buy","sell","long","short"].includes(body.side)) return error(res, "BAD_REQUEST", "side hatalı", 400);
+      if (body.market && !["spot","futures"].includes(body.market)) return error(res, "BAD_REQUEST", "market hatalı", 400);
 
       const r = {
         id: randomUUID(),
-        name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`, // ← otomatik ad
+        name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`,
         market: body.market || "spot",
         symbol: body.symbol,
         side: body.side,
@@ -139,53 +147,67 @@ const server = http.createServer((req, res) => {
       return send(res, 201, r);
     });
   }
+
+  // ROBOTS {id} PATCH
   if (req.url?.startsWith("/robots/") && req.method === "PATCH") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     const id = req.url.split("/")[2];
+
     return parseBody(req, res, (body) => {
-      if (body.market && !["spot","futures"].includes(body.market)) return send(res, 400, { code: "BAD_REQUEST", message: "market hatalı" });
-      if (body.side && !["buy","sell","long","short"].includes(body.side)) return send(res, 400, { code: "BAD_REQUEST", message: "side hatalı" });
-      if (body.status && !["active","paused","stopped"].includes(body.status)) return send(res, 400, { code: "BAD_REQUEST", message: "status hatalı" });
+      if (body.market && !["spot","futures"].includes(body.market)) return error(res, "BAD_REQUEST", "market hatalı", 400);
+      if (body.side && !["buy","sell","long","short"].includes(body.side)) return error(res, "BAD_REQUEST", "side hatalı", 400);
+      if (body.status && !["active","paused","stopped"].includes(body.status)) return error(res, "BAD_REQUEST", "status hatalı", 400);
       if (body.schedule) {
         const mode = body.schedule.mode || "immediate";
-        if (!["immediate","window","absolute"].includes(mode)) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.mode hatalı" });
+        if (!["immediate","window","absolute"].includes(mode)) return error(res, "BAD_REQUEST", "schedule.mode hatalı", 400);
         if (mode === "window") {
           const w = body.schedule.window || {};
-          if (!w.start || !w.end) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.window.start/end gerekli" });
+          if (!w.start || !w.end) return error(res, "BAD_REQUEST", "schedule.window.start/end gerekli", 400);
         }
         if (mode === "absolute") {
-          if (!body.schedule.startAt && !body.schedule.stopAt) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.startAt veya schedule.stopAt gerekli" });
+          if (!body.schedule.startAt && !body.schedule.stopAt) return error(res, "BAD_REQUEST", "schedule.startAt veya schedule.stopAt gerekli", 400);
         }
       }
-      const list = readRobots(); const idx = list.findIndex(x => x.id === id);
-      if (idx === -1) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
+
+      const list = readRobots();
+      const idx = list.findIndex(x => x.id === id);
+      if (idx === -1) return error(res, "NOT_FOUND", "robot not found", 404);
+
       list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
       writeRobots(list);
       return send(res, 200, list[idx]);
     });
   }
+
+  // ROBOTS {id} DELETE
   if (req.url?.startsWith("/robots/") && req.method === "DELETE") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     const id = req.url.split("/")[2];
     const list = readRobots();
-    if (!list.some(x => x.id === id)) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
+    const exists = list.some(x => x.id === id);
+    if (!exists) return error(res, "NOT_FOUND", "robot not found", 404);
     writeRobots(list.filter(x => x.id !== id));
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*" }); return res.end();
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
+    return res.end();
   }
 
-  // REPORTS
+  // REPORTS /execs proxy (from/to passthrough)
   if (req.url.startsWith("/reports/execs") && req.method === "GET") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (REPORTING_URL) {
       (async () => {
         const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
         const r = await safeFetch(`${REPORTING_URL}/execs${qs}`);
         return send(res, r.ok ? r.status : 502, r.json);
       })(); return;
-    } else { return send(res, 200, []); }
+    } else {
+      return send(res, 200, []);
+    }
   }
+
+  // REPORTS /summary proxy (from/to passthrough)
   if (req.url.startsWith("/reports/summary") && req.method === "GET") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (REPORTING_URL) {
       (async () => {
         const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
@@ -200,9 +222,9 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // SCANNER
+  // SCANNER templates
   if (req.url === "/scanner/templates" && req.method === "GET") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (SCANNER_URL) {
       (async () => {
         const r = await safeFetch(`${SCANNER_URL}/templates`);
@@ -215,18 +237,25 @@ const server = http.createServer((req, res) => {
       ]);
     }
   }
+
+  // SCANNER search (template VEYA rules zorunlu)
   if (req.url === "/scanner/search" && req.method === "POST") {
-    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
+
     return parseBody(req, res, async (body) => {
       const { template, rules } = body || {};
       const hasTemplate = typeof template === "string" && template.length > 0;
       const hasRules = Array.isArray(rules) && rules.length > 0;
+
       if (!hasTemplate && !hasRules) {
-        return send(res, 400, {
-          code: "BAD_REQUEST",
-          message: "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }"
-        });
+        return error(
+          res,
+          "BAD_REQUEST",
+          "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }",
+          400
+        );
       }
+
       if (SCANNER_URL) {
         const r = await safeFetch(`${SCANNER_URL}/search`, {
           method: "POST",
@@ -244,7 +273,7 @@ const server = http.createServer((req, res) => {
   }
 
   // fallback
-  send(res, 404, "not found");
+  return error(res, "NOT_FOUND", "not found", 404);
 });
 
 server.listen(8080, () => console.log("api-gateway running on :8080"));
