@@ -9,3 +9,5 @@ Klasörler:
 - deploy/: docker-compose.dev.yml
 - docs/: architecture.md, CONTRIBUTING.md, adr/0001-repo-architecture.md, RUNBOOKS/acil-stop.md
 - .github/workflows/ci.yml
+## Çalıştırma Rehberi
+Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
