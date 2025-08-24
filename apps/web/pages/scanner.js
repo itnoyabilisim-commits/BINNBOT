@@ -1,38 +1,46 @@
 // apps/web/pages/scanner.js
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { apiGet, apiPost } from "../lib/api";
 
 export default function Scanner() {
+  const [templates, setTemplates] = useState([]);
   const [results, setResults] = useState([]);
-  const templates = [
-    { key: "trend-strong", name: "Güçlü Trend Coinler" },
-    { key: "rsi-oversold", name: "RSI Düşük (Alım Fırsatı)" }
-  ];
+  const [msg, setMsg] = useState("");
 
-  function runTemplate(tpl) {
-    // dummy sonuçlar
-    if (tpl.key === "trend-strong") {
-      setResults([
-        { symbol: "BTCUSDT", change24h: "+3.4%", volume: "250M", score: "0.82" },
-        { symbol: "ETHUSDT", change24h: "+2.8%", volume: "180M", score: "0.74" }
-      ]);
-    } else {
-      setResults([
-        { symbol: "SOLUSDT", change24h: "-1.2%", volume: "90M", score: "0.65" }
-      ]);
+  // şablonları yükle
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiGet("/scanner/templates");
+        setTemplates(data);
+      } catch (e) {
+        setMsg("Şablonlar alınamadı (login gerekebilir)");
+      }
+    })();
+  }, []);
+
+  async function runTemplate(key) {
+    setMsg("Çalıştırılıyor...");
+    try {
+      const data = await apiPost("/scanner/search", { market: "spot", template: key });
+      setResults(data);
+      setMsg("");
+    } catch (e) {
+      setMsg("Hata: " + e.message);
     }
   }
 
   return (
     <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
       <h1>Kripto Tarayıcı</h1>
-      <p>Hazır şablonlarla ya da özel filtrelerle arama yapabilirsin (dummy).</p>
+      <p>Hazır şablonlarla ya da özel filtrelerle arama yapabilirsin.</p>
 
       {/* Şablonlar */}
-      <div style={{ display: "flex", gap: "15px", marginTop: "20px" }}>
+      <div style={{ display: "flex", gap: "15px", marginTop: "20px", flexWrap: "wrap" }}>
         {templates.map(tpl => (
           <button
             key={tpl.key}
-            onClick={() => runTemplate(tpl)}
+            onClick={() => runTemplate(tpl.key)}
             style={{
               background: "#F4B400",
               border: "none",
@@ -44,11 +52,13 @@ export default function Scanner() {
             {tpl.name}
           </button>
         ))}
+        {templates.length === 0 && <span style={{ color: "#666" }}>Şablon bulunamadı</span>}
       </div>
 
       {/* Sonuçlar */}
       <div style={{ marginTop: "30px" }}>
         <h2>Sonuçlar</h2>
+        {msg && <p>{msg}</p>}
         {results.length === 0 ? (
           <p>Henüz tarama yapılmadı.</p>
         ) : (
@@ -65,9 +75,9 @@ export default function Scanner() {
               {results.map((r, i) => (
                 <tr key={i}>
                   <td>{r.symbol}</td>
-                  <td>{r.change24h}</td>
-                  <td>{r.volume}</td>
-                  <td>{r.score}</td>
+                  <td>{r.change24h ?? "-"}</td>
+                  <td>{r.volume24h ?? r.volume ?? "-"}</td>
+                  <td>{r.score ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
