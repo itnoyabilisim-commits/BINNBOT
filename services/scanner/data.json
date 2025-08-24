@@ -1,0 +1,6 @@
+[
+  { "symbol": "BTCUSDT", "market": "spot", "ema50": 42000, "ema200": 40000, "rsi": 62, "atr": 850, "adx": 28, "change24h": 0.034, "volume24h": 250000000 },
+  { "symbol": "ETHUSDT", "market": "spot", "ema50": 2400,  "ema200": 2300,  "rsi": 55, "atr": 120, "adx": 22, "change24h": 0.028, "volume24h": 180000000 },
+  { "symbol": "SOLUSDT", "market": "spot", "ema50": 140,   "ema200": 160,   "rsi": 35, "atr": 8,   "adx": 18, "change24h": -0.012, "volume24h": 90000000 },
+  { "symbol": "BNBUSDT", "market": "spot", "ema50": 550,   "ema200": 520,   "rsi": 68, "atr": 15,  "adx": 30, "change24h": 0.021, "volume24h": 110000000 }
+]
