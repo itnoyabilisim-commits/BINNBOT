@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  contract-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli
+
+      - name: Lint OpenAPI
+        run: redocly lint packages/contracts/openapi.yaml
+
+      - name: Install Spectral
+        run: npm install -g @stoplight/spectral-cli
+
+      - name: Lint AsyncAPI
+        run: spectral lint packages/contracts/asyncapi.yaml
