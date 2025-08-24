@@ -1,6 +1,18 @@
 // apps/web/lib/api.js
 export const API_BASE = "http://localhost:8080";
 
+async function readError(r, fallbackOp) {
+  let txt = "";
+  try { txt = await r.text(); } catch {}
+  try {
+    const j = txt ? JSON.parse(txt) : null;
+    const msg = j?.message || j?.error || j?.code || `HTTP ${r.status}`;
+    throw new Error(`${fallbackOp} failed (${r.status}): ${msg}`);
+  } catch {
+    throw new Error(`${fallbackOp} failed (${r.status}): ${txt || 'unknown error'}`);
+  }
+}
+
 async function withRefresh(doRequest) {
   let r = await doRequest();
   if (r.status !== 401) return r;
@@ -32,7 +44,7 @@ export async function apiGet(path) {
   const r = await withRefresh(() =>
     fetch(`${API_BASE}${path}`, { headers: authHeaders() })
   );
-  if (!r.ok) throw new Error(`GET ${path} failed (${r.status})`);
+  if (!r.ok) await readError(r, `GET ${path}`);
   return r.json();
 }
 
@@ -44,10 +56,7 @@ export async function apiPost(path, body) {
       body: JSON.stringify(body)
     })
   );
-  if (!r.ok) {
-    const txt = await r.text().catch(()=> "");
-    throw new Error(txt || `POST ${path} failed (${r.status})`);
-  }
+  if (!r.ok) await readError(r, `POST ${path}`);
   return r.json();
 }
 
@@ -59,10 +68,7 @@ export async function apiPatch(path, body) {
       body: JSON.stringify(body)
     })
   );
-  if (!r.ok) {
-    const txt = await r.text().catch(()=> "");
-    throw new Error(txt || `PATCH ${path} failed (${r.status})`);
-  }
+  if (!r.ok) await readError(r, `PATCH ${path}`);
   return r.json();
 }
 
@@ -73,6 +79,6 @@ export async function apiDelete(path) {
       headers: authHeaders()
     })
   );
-  if (!r.ok) throw new Error(`DELETE ${path} failed (${r.status})`);
+  if (!r.ok) await readError(r, `DELETE ${path}`);
   return true;
 }
