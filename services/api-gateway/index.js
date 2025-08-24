@@ -51,12 +51,16 @@ const server = http.createServer((req, res) => {
   }
 
   // -------- AUTH (dummy) --------
-  if (req.url === "/auth/login" && req.method === "POST") {
-    return parseBody(req, res, ({ email, password }) => {
-      if (!email || !password) return send(res, 400, { code: "BAD_REQUEST", message: "email/password required" });
-      return send(res, 200, { accessToken: randomUUID(), refreshToken: randomUUID(), expiresIn: 3600 });
-    });
-  }
+if (req.url === "/auth/login" && req.method === "POST") {
+  return parseBody(req, res, ({ email, password }) => {
+    try {
+      const tokens = login(email, password);
+      return send(res, 200, tokens);
+    } catch (e) {
+      return send(res, 400, { code: "BAD_REQUEST", message: e.message });
+    }
+  });
+}
   if (req.url === "/auth/refresh" && req.method === "POST") {
     return parseBody(req, res, ({ refreshToken }) => {
       if (!refreshToken) return send(res, 401, { code: "UNAUTHORIZED", message: "missing refresh token" });
