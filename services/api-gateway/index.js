@@ -10,7 +10,7 @@ const REPORTING_URL = process.env.REPORTING_URL || "";
 // ==== rate limit (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
-const rlMap = new Map(); // ip -> { count, start }
+const rlMap = new Map();
 
 function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
@@ -37,7 +37,6 @@ function send(res, code, data, headers = {}) {
   res.writeHead(code, h);
   res.end(typeof data === "string" ? data : JSON.stringify(data));
 }
-
 function parseBody(req, res, cb) {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -46,7 +45,6 @@ function parseBody(req, res, cb) {
     catch { send(res, 400, { code: "BAD_REQUEST", message: "invalid JSON" }); }
   });
 }
-
 async function safeFetch(url, init) {
   try {
     const r = await fetch(url, init);
@@ -92,7 +90,6 @@ const server = http.createServer((req, res) => {
       catch (e) { return send(res, 400, { code: "BAD_REQUEST", message: e.message }); }
     });
   }
-
   if (req.url === "/auth/refresh" && req.method === "POST") {
     return parseBody(req, res, ({ refreshToken }) => {
       const payload = refreshToken ? verifyToken(refreshToken, "refresh") : null;
@@ -107,7 +104,6 @@ const server = http.createServer((req, res) => {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     return send(res, 200, { items: readRobots() });
   }
-
   if (req.url === "/robots" && req.method === "POST") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     return parseBody(req, res, (body) => {
@@ -117,7 +113,7 @@ const server = http.createServer((req, res) => {
 
       const r = {
         id: randomUUID(),
-        name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`,
+        name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`, // ← otomatik ad
         market: body.market || "spot",
         symbol: body.symbol,
         side: body.side,
@@ -130,7 +126,6 @@ const server = http.createServer((req, res) => {
       const list = readRobots(); list.push(r); writeRobots(list);
 
       publishOrderRequested({ robotId: r.id, symbol: r.symbol, side: r.side });
-
       sendExecutionToReporting({
         robotId: r.id,
         symbol: r.symbol,
@@ -144,64 +139,41 @@ const server = http.createServer((req, res) => {
       return send(res, 201, r);
     });
   }
-
-  // ROBOTS {id} PATCH  (gelişmiş validasyon)
   if (req.url?.startsWith("/robots/") && req.method === "PATCH") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     const id = req.url.split("/")[2];
-
     return parseBody(req, res, (body) => {
-      // Validasyon
-      if (body.market && !["spot","futures"].includes(body.market)) {
-        return send(res, 400, { code: "BAD_REQUEST", message: "market hatalı" });
-      }
-      if (body.side && !["buy","sell","long","short"].includes(body.side)) {
-        return send(res, 400, { code: "BAD_REQUEST", message: "side hatalı" });
-      }
-      if (body.status && !["active","paused","stopped"].includes(body.status)) {
-        return send(res, 400, { code: "BAD_REQUEST", message: "status hatalı" });
-      }
+      if (body.market && !["spot","futures"].includes(body.market)) return send(res, 400, { code: "BAD_REQUEST", message: "market hatalı" });
+      if (body.side && !["buy","sell","long","short"].includes(body.side)) return send(res, 400, { code: "BAD_REQUEST", message: "side hatalı" });
+      if (body.status && !["active","paused","stopped"].includes(body.status)) return send(res, 400, { code: "BAD_REQUEST", message: "status hatalı" });
       if (body.schedule) {
         const mode = body.schedule.mode || "immediate";
-        if (!["immediate","window","absolute"].includes(mode)) {
-          return send(res, 400, { code: "BAD_REQUEST", message: "schedule.mode hatalı" });
-        }
+        if (!["immediate","window","absolute"].includes(mode)) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.mode hatalı" });
         if (mode === "window") {
           const w = body.schedule.window || {};
-          if (!w.start || !w.end) {
-            return send(res, 400, { code: "BAD_REQUEST", message: "schedule.window.start/end gerekli" });
-          }
+          if (!w.start || !w.end) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.window.start/end gerekli" });
         }
         if (mode === "absolute") {
-          if (!body.schedule.startAt && !body.schedule.stopAt) {
-            return send(res, 400, { code: "BAD_REQUEST", message: "schedule.startAt veya schedule.stopAt gerekli" });
-          }
+          if (!body.schedule.startAt && !body.schedule.stopAt) return send(res, 400, { code: "BAD_REQUEST", message: "schedule.startAt veya schedule.stopAt gerekli" });
         }
       }
-
-      const list = readRobots();
-      const idx = list.findIndex(x => x.id === id);
+      const list = readRobots(); const idx = list.findIndex(x => x.id === id);
       if (idx === -1) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
-
       list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
       writeRobots(list);
       return send(res, 200, list[idx]);
     });
   }
-
-  // ROBOTS {id} DELETE
   if (req.url?.startsWith("/robots/") && req.method === "DELETE") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     const id = req.url.split("/")[2];
     const list = readRobots();
-    const exists = list.some(x => x.id === id);
-    if (!exists) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
+    if (!list.some(x => x.id === id)) return send(res, 404, { code: "NOT_FOUND", message: "robot not found" });
     writeRobots(list.filter(x => x.id !== id));
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
-    return res.end();
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*" }); return res.end();
   }
 
-  // REPORTS /execs proxy (from/to query'lerini ileri taşı)
+  // REPORTS
   if (req.url.startsWith("/reports/execs") && req.method === "GET") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     if (REPORTING_URL) {
@@ -209,14 +181,9 @@ const server = http.createServer((req, res) => {
         const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
         const r = await safeFetch(`${REPORTING_URL}/execs${qs}`);
         return send(res, r.ok ? r.status : 502, r.json);
-      })();
-    } else {
-      return send(res, 200, []); // dummy boş liste
-    }
-    return;
+      })(); return;
+    } else { return send(res, 200, []); }
   }
-
-  // REPORTS /summary proxy (from/to query'lerini ileri taşı)
   if (req.url.startsWith("/reports/summary") && req.method === "GET") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
     if (REPORTING_URL) {
@@ -224,14 +191,13 @@ const server = http.createServer((req, res) => {
         const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
         const r = await safeFetch(`${REPORTING_URL}/summary${qs}`);
         return send(res, r.ok ? r.status : 502, r.json);
-      })();
+      })(); return;
     } else {
       return send(res, 200, {
         pnlTotal: 42031, winrate: 0.61, maxDrawdown: 0.22,
         pnlDaily: [{ date: "2025-08-01", pnl: 1200 }, { date: "2025-08-02", pnl: -340 }],
       });
     }
-    return;
   }
 
   // SCANNER
@@ -241,32 +207,26 @@ const server = http.createServer((req, res) => {
       (async () => {
         const r = await safeFetch(`${SCANNER_URL}/templates`);
         return send(res, r.ok ? r.status : 502, r.json);
-      })();
+      })(); return;
     } else {
       return send(res, 200, [
         { key: "trend-strong", name: "Güçlü Trend Coinler", market: "spot" },
         { key: "rsi-oversold", name: "RSI Düşük (Alım Fırsatı)", market: "spot" },
       ]);
     }
-    return;
   }
-
-  // SCANNER /search  (template VEYA rules zorunlu)
   if (req.url === "/scanner/search" && req.method === "POST") {
     const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
-
     return parseBody(req, res, async (body) => {
       const { template, rules } = body || {};
       const hasTemplate = typeof template === "string" && template.length > 0;
       const hasRules = Array.isArray(rules) && rules.length > 0;
-
       if (!hasTemplate && !hasRules) {
         return send(res, 400, {
           code: "BAD_REQUEST",
           message: "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }"
         });
       }
-
       if (SCANNER_URL) {
         const r = await safeFetch(`${SCANNER_URL}/search`, {
           method: "POST",
@@ -275,7 +235,6 @@ const server = http.createServer((req, res) => {
         });
         return send(res, r.ok ? r.status : 502, r.json);
       } else {
-        // gateway-dummy: scanner yoksa basit cevap
         return send(res, 200, [
           { symbol: "BTCUSDT", change24h: 0.034, volume24h: 250000000, score: 0.82 },
           { symbol: "ETHUSDT", change24h: 0.028, volume24h: 180000000, score: 0.74 },
