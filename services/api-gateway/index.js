@@ -1,3 +1,4 @@
+// services/api-gateway/index.js
 import http from "http";
 import { randomUUID } from "crypto";
 import { readRobots, writeRobots } from "./storage.js";
@@ -86,7 +87,7 @@ const server = http.createServer((req, res) => {
   // ==== RATE LIMIT ====
   if (!rateLimit(req, res)) return;
 
-  // SYSTEM
+  // ====== SYSTEM ======
   if (req.url === "/healthz" && req.method === "GET") {
     res.writeHead(200); return res.end("ok");
   }
@@ -108,6 +109,7 @@ const server = http.createServer((req, res) => {
   }
 
   // ====== BINANCE (REST) ======
+  // 1) server time (public)
   if (req.url === "/exchange/binance/time" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/time");
@@ -115,10 +117,10 @@ const server = http.createServer((req, res) => {
         const m = normalizeBinanceError(r);
         return error(res, m.code, m.message, m.status);
       }
-      return send(res, r.status, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX, rate: r.meta?.rate || null });
+      return send(res, r.status, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
     })(); return;
   }
-
+  // 2) account (signed)
   if (req.url === "/exchange/binance/account" && req.method === "GET") {
     (async () => {
       const r = await binanceRestSigned("GET", "/api/v3/account");
@@ -126,10 +128,10 @@ const server = http.createServer((req, res) => {
         const m = normalizeBinanceError(r);
         return error(res, m.code, m.message, m.status);
       }
-      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
+      return send(res, r.status, r.json);
     })(); return;
   }
-
+  // 3) exchangeInfo (public)
   if (req.url.startsWith("/exchange/binance/exchangeInfo") && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/exchangeInfo");
@@ -140,7 +142,7 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, r.json);
     })(); return;
   }
-
+  // 4) test order (signed)
   if (req.url === "/exchange/binance/order/test" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity } = body || {};
@@ -153,7 +155,7 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, r.json || { ok: true });
     });
   }
-
+  // 5) real order place (signed)
   if (req.url === "/exchange/binance/order" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
@@ -168,10 +170,10 @@ const server = http.createServer((req, res) => {
         const m = normalizeBinanceError(r);
         return error(res, m.code, m.message, m.status);
       }
-      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
+      return send(res, r.status, r.json);
     });
   }
-
+  // 6) cancel order (signed)
   if (req.url === "/exchange/binance/order" && req.method === "DELETE") {
     return parseBody(req, res, async (body) => {
       const { symbol, orderId, origClientOrderId } = body || {};
@@ -184,7 +186,7 @@ const server = http.createServer((req, res) => {
         const m = normalizeBinanceError(r);
         return error(res, m.code, m.message, m.status);
       }
-      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
+      return send(res, r.status, r.json);
     });
   }
 
