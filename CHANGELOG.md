@@ -25,3 +25,18 @@
 - Rate limit: IP başına dakikada 60 istek (429).
 - `/scanner/search`: `template` veya `rules` zorunlu body validasyonu.
 - Frontend: robots PATCH/DELETE, inline düzenleme, reports from/to filtresi.
+## [0.2.0] - 2025-08-24 (M2 Snapshot)
+### Added
+- Web: Üst menü (Dashboard, Testler, Robotlar, Tarayıcı, Raporlar, Etkileşim, Destek, Üyelik, Çıkış)
+- Admin: Sistem Durumu sayfasına hızlı butonlar (Son 24 saat execs, Son 7 gün summary)
+- Gateway: /reports/summary ve /reports/execs için from/to passthrough, rate-limit (60 req/min)
+
+### Changed
+- Scanner: Gerçek filtre motoru (EMA/RSI/ATR/ADX) + template desteği
+- Reporting: /summary from/to filtresi, Postgres desteği (DATABASE_URL ile)
+- Frontend: Robots sayfasında inline düzenleme + silme, Reports sayfasında from/to/limit filtresi
+- Error Standardization: API Gateway tüm hataları `{ code, message }` formatında döner
+
+### Notes
+- DATABASE_URL yoksa reporting bellek modunda çalışır.
+- M3’te: Futures robot, Admin Acil Stop akışı, Notifier entegrasyonları.
