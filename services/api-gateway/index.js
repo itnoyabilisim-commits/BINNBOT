@@ -3,7 +3,12 @@ import { randomUUID } from "crypto";
 import { readRobots, writeRobots } from "./storage.js";
 import { login, verify, issueToken, verifyToken } from "./auth.js";
 import { publishOrderRequested, sendExecutionToReporting } from "./events.js";
-import { binanceRestPublic, binanceRestSigned, BINANCE_INFO } from "../lib/binance.js";
+import {
+  binanceRestPublic,
+  binanceRestSigned,
+  BINANCE_INFO,
+  normalizeBinanceError
+} from "../lib/binance.js";
 
 const SCANNER_URL   = process.env.SCANNER_URL   || "";
 const REPORTING_URL = process.env.REPORTING_URL || "";
@@ -11,8 +16,7 @@ const REPORTING_URL = process.env.REPORTING_URL || "";
 // ==== rate limit (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
-const rlMap = new Map(); // ip -> { count, start }
-
+const rlMap = new Map();
 function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
   const now = Date.now();
@@ -104,52 +108,70 @@ const server = http.createServer((req, res) => {
   }
 
   // ====== BINANCE (REST) ======
-  // 1) server time (public)
   if (req.url === "/exchange/binance/time" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/time");
-      return send(res, r.ok ? r.status : 502, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX, rate: r.meta?.rate || null });
     })(); return;
   }
-  // 2) account (signed)
+
   if (req.url === "/exchange/binance/account" && req.method === "GET") {
     (async () => {
       const r = await binanceRestSigned("GET", "/api/v3/account");
-      return send(res, r.ok ? r.status : (r.status || 502), r.json);
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
     })(); return;
   }
-  // 3) exchangeInfo (public) – adım: minQty/stepSize için kullanılacak
+
   if (req.url.startsWith("/exchange/binance/exchangeInfo") && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/exchangeInfo");
-      return send(res, r.ok ? r.status : 502, r.json);
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, r.json);
     })(); return;
   }
-  // 4) test order (signed)
+
   if (req.url === "/exchange/binance/order/test" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity } = body || {};
       if (!symbol || !quantity) return error(res, "BAD_REQUEST", "symbol ve quantity gerekli", 400);
       const r = await binanceRestSigned("POST", "/api/v3/order/test", { symbol, side, type, quantity });
-      return send(res, r.ok ? r.status : (r.status || 502), r.json || { ok: true });
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, r.json || { ok: true });
     });
   }
-  // 5) real order place (signed)  — DİKKAT: SANDBOX değilse gerçek emir
+
   if (req.url === "/exchange/binance/order" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
       if (!symbol || !type) return error(res, "BAD_REQUEST", "symbol ve type gerekli", 400);
-      // MARKET için quantity zorunlu; LIMIT için price & timeInForce zorunlu
       if (type === "MARKET" && !quantity) return error(res, "BAD_REQUEST", "MARKET için quantity gerekli", 400);
       if (type === "LIMIT" && (!price || !timeInForce)) {
         return error(res, "BAD_REQUEST", "LIMIT için price ve timeInForce gerekli", 400);
       }
       const params = { symbol, side, type, quantity, price, timeInForce, newClientOrderId: `bb-${Date.now()}` };
       const r = await binanceRestSigned("POST", "/api/v3/order", params);
-      return send(res, r.ok ? r.status : (r.status || 502), r.json);
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
     });
   }
-  // 6) cancel order (signed)
+
   if (req.url === "/exchange/binance/order" && req.method === "DELETE") {
     return parseBody(req, res, async (body) => {
       const { symbol, orderId, origClientOrderId } = body || {};
@@ -158,7 +180,11 @@ const server = http.createServer((req, res) => {
       }
       const params = { symbol, orderId, origClientOrderId };
       const r = await binanceRestSigned("DELETE", "/api/v3/order", params);
-      return send(res, r.ok ? r.status : (r.status || 502), r.json);
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, { ...r.json, rate: r.meta?.rate || null });
     });
   }
 
@@ -173,6 +199,7 @@ const server = http.createServer((req, res) => {
       if (!body.symbol) return error(res, "BAD_REQUEST", "symbol gerekli", 400);
       if (!["buy","sell","long","short"].includes(body.side)) return error(res, "BAD_REQUEST", "side hatalı", 400);
       if (body.market && !["spot","futures"].includes(body.market)) return error(res, "BAD_REQUEST", "market hatalı", 400);
+
       const r = {
         id: randomUUID(),
         name: body.name || `Robot – ${body.symbol || "SYMBOL"} – ${body.side || "side"}`,
