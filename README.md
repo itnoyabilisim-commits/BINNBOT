@@ -22,3 +22,6 @@ Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
 - Scanner gerçek filtre motoru (EMA/RSI/ATR/ADX) ✓
 - Reporting /summary from–to filtresi ✓
 - Kalan: Reporting kalıcı DB şeması, gateway rate-limit iyileştirmeleri, web API bağları için ek UX
+## Navigasyon (Web)
+Uygulama içinde üst menü: **Dashboard · Testler · Robotlar · Tarayıcı · Raporlar · Etkileşim · Destek · Üyelik · Çıkış**  
+(Login sayfasında gizlenir; diğer sayfalarda görünür.)
