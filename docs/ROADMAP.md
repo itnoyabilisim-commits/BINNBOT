@@ -29,14 +29,13 @@
 ## M2 – PLUS (2–3 hafta)
 **Hedef: Spot robot gerçek akış + tarayıcı gerçek filtreleme + raporlama DB**
 
-- [ ] Gerçek JWT (HS256) & refresh flow (gateway)
-- [ ] Robots: gerçek emir akışı stub → RabbitMQ event üretimi
-- [ ] Robot Exec: `orders.v1` subscribe → execution simülasyonu → reporting’e yaz
-- [ ] Scanner: gerçek filtre motoru (EMA/RSI/ATR/ADX/…)
-- [ ] Reporting: Postgres şeması + `/summary` gerçek veriden
-- [ ] Web (apps/web): Dashboard/Robots → gateway API’ye bağla
-- [ ] Basit rate-limit & error-handling (gateway)
-- [ ] Çevre değişkenleri (.env) örnekleri genişlet
+- [x] JWT refresh flow (gateway: /auth/refresh + frontend auto-refresh)
+- [x] Robot Exec: execution simülasyonu → reporting /execs POST
+- [x] Scanner: basit filtre motoru (EMA/RSI/ATR/ADX) + templates
+- [ ] Reporting: Postgres kalıcı şema ve /summary gerçek veriden
+- [ ] Web: Robots/Reports sayfalarını gerçek API’ye bağlama iyileştirmeleri (sil/güncelle)
+- [ ] Gateway: rate-limit & error-handling (temel)
+- [ ] Çevre değişkenleri: README_RUN.md’ye servis URL notları (prod/stage)
 
 ---
 
