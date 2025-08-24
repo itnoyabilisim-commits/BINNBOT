@@ -44,3 +44,12 @@
 ### Notes
 - DATABASE_URL yoksa reporting bellek modunda çalışır.
 - M3’te: Futures robot, Admin Acil Stop akışı, Notifier entegrasyonları.
+## [0.3.0] - 2025-08-24 (M2 Complete)
+### Added
+- Admin: Binance Diagnostics sayfası (ping, time, account, test order)
+- Gateway: Dashboard WS yayınına reporting summary entegrasyonu
+- Market-Ingestor: WS tick akışı (gateway üzerinden dashboard’a)
+
+### Changed
+- Binance: exchangeInfo cache ve minQty/stepSize/minNotional doğrulaması
+- README_RUN: Binance cURL örnekleri ve rate-limit notları
