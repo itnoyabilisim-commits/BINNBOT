@@ -5,7 +5,7 @@ import { init, isReady, insertExecution, getExecutions, getDailyPnL, getTotals }
 
 const PORT = process.env.REPORTING_PORT || 8092;
 
-// Bellek modu (DATABASE_URL yoksa fallback)
+// Bellek modu seed verisi
 let memExecs = [];
 
 /** ISO 'YYYY-MM-DD' → Date bounds */
@@ -45,8 +45,21 @@ function computeSummary(list) {
   return { pnlTotal, winrate, maxDrawdown: Number(maxDD.toFixed(4)), pnlDaily };
 }
 
-// DB init (varsa)
-init().catch(err => console.error("[reporting] DB init error:", err));
+// DB init
+init().then((ready) => {
+  if (!ready) {
+    // SEED (sadece bellek modunda)
+    const now = Date.now();
+    memExecs = [
+      { robotId: "seed-1", symbol: "BTCUSDT", side: "buy",  qty: 50,  price: 42000, pnl:  120, ts: new Date(now - 3*86400000).toISOString() },
+      { robotId: "seed-2", symbol: "ETHUSDT", side: "sell", qty: 20,  price: 2400,  pnl:  -35, ts: new Date(now - 2*86400000).toISOString() },
+      { robotId: "seed-3", symbol: "BNBUSDT", side: "buy",  qty: 100, price: 540,   pnl:   50, ts: new Date(now - 1*86400000).toISOString() }
+    ];
+    console.log("[reporting] memory mode with seed data");
+  } else {
+    console.log("[reporting] DB mode");
+  }
+}).catch(err => console.error("[reporting] DB init error:", err));
 
 const server = http.createServer(async (req, res) => {
   const cors = { "Access-Control-Allow-Origin": "*" };
@@ -68,19 +81,16 @@ const server = http.createServer(async (req, res) => {
   // summary (from/to destekli)
   if (req.url.startsWith("/summary") && req.method === "GET") {
     const u = new URL(req.url, `http://localhost:${PORT}`);
-    const from = u.searchParams.get("from") || null; // YYYY-MM-DD
+    const from = u.searchParams.get("from") || null;
     const to   = u.searchParams.get("to")   || null;
 
     try {
       if (isReady()) {
-        const daily = await getDailyPnL({ from, to }); // [{date,pnl}]
-        const totals = await getTotals({ from, to });  // { pnlTotal, winrate }
-        // maxDD'yi JS'de hesapla:
+        const daily = await getDailyPnL({ from, to });
+        const totals = await getTotals({ from, to });
+        // maxDD'yi JS’de hesapla
         let peak=0, eq=0, maxDD=0;
-        for (const d of daily) {
-          eq += Number(d.pnl)||0; if (eq>peak) peak=eq;
-          const dd = peak>0 ? (peak-eq)/peak : 0; if (dd>maxDD) maxDD=dd;
-        }
+        for (const d of daily) { eq += Number(d.pnl)||0; if (eq>peak) peak=eq; const dd=peak>0?(peak-eq)/peak:0; if (dd>maxDD) maxDD=dd; }
         const summary = {
           pnlTotal: Number(totals.pnlTotal.toFixed(2)),
           winrate: Number(totals.winrate.toFixed(4)),
@@ -90,7 +100,6 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { "Content-Type": "application/json", ...cors });
         return res.end(JSON.stringify(summary));
       } else {
-        // bellek modu
         const filtered = filterMem(memExecs, from, to);
         const summary = computeSummary(filtered);
         res.writeHead(200, { "Content-Type": "application/json", ...cors });
@@ -132,8 +141,8 @@ const server = http.createServer(async (req, res) => {
   // execs GET (from/to + limit)
   if (req.url.startsWith("/execs") && req.method === "GET") {
     const u = new URL(req.url, `http://localhost:${PORT}`);
-    const from = u.searchParams.get("from") || null;
-    const to   = u.searchParams.get("to")   || null;
+    const from  = u.searchParams.get("from") || null;
+    const to    = u.searchParams.get("to")   || null;
     const limit = Number(u.searchParams.get("limit") || 200);
 
     try {
@@ -156,4 +165,4 @@ const server = http.createServer(async (req, res) => {
   res.end("not found");
 });
 
-server.listen(PORT, () => console.log(`reporting service on :${PORT}`));
+server.listen(PORT, () => console.log(`[reporting] on :${PORT}`));
