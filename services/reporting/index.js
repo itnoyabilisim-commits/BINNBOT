@@ -1,10 +1,47 @@
 // services/reporting/index.js
 import http from "http";
+import { URL } from "url";
 
 const PORT = process.env.REPORTING_PORT || 8092;
 
 // Bellekte execution listesi (MVP)
 let executions = [];
+
+/** ISO (YYYY-MM-DD) → Date (00:00:00) */
+function toStartDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // Günün başına sabitle
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** ISO (YYYY-MM-DD) → Date (23:59:59.999) */
+function toEndDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // Günün sonuna sabitle
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/** ts alanına göre from/to filtre uygular */
+function byDateRange(list, fromIso, toIso) {
+  const from = toStartDate(fromIso);
+  const to = toEndDate(toIso);
+  if (!from && !to) return list;
+
+  return list.filter((e) => {
+    const ts = new Date(e.ts || e.created_at || e.date || 0);
+    const t = ts.getTime();
+    if (Number.isNaN(t)) return false;
+    if (from && t < from.getTime()) return false;
+    if (to && t > to.getTime()) return false;
+    return true;
+  });
+}
 
 /** Günlük özet ve metrikleri executions listesinden üretir */
 function computeSummary(list) {
@@ -18,7 +55,7 @@ function computeSummary(list) {
 
   // winrate
   const wins = pnlNums.filter(n => n > 0).length;
-  const winrate = wins / pnlNums.length;
+  const winrate = pnlNums.length ? wins / pnlNums.length : 0;
 
   // günlük toplamlar
   const byDate = new Map();
@@ -29,9 +66,9 @@ function computeSummary(list) {
   }
   const pnlDaily = Array.from(byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, pnl]) => ({ date, pnl }));
+    .map(([date, pnl]) => ({ date, pnl: Number(pnl.toFixed(2)) }));
 
-  // max drawdown (basit yaklaşım: kümülatif PnL serisinden)
+  // max drawdown (basit: kümülatif PnL serisinden)
   let peak = 0, equity = 0, maxDD = 0;
   for (const v of pnlDaily.map(x => x.pnl)) {
     equity += v;
@@ -65,9 +102,15 @@ const server = http.createServer((req, res) => {
     res.writeHead(200); return res.end("ok");
   }
 
-  // Özet (executions listesinden üret)
-  if (req.url === "/summary" && req.method === "GET") {
-    const summary = computeSummary(executions);
+  // Özet (executions listesinden; from/to ile filtre)
+  if (req.url.startsWith("/summary") && req.method === "GET") {
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const from = u.searchParams.get("from"); // YYYY-MM-DD
+    const to = u.searchParams.get("to");     // YYYY-MM-DD
+
+    const filtered = byDateRange(executions, from, to);
+    const summary = computeSummary(filtered);
+
     res.writeHead(200, { "Content-Type": "application/json", ...cors });
     return res.end(JSON.stringify(summary));
   }
@@ -86,16 +129,22 @@ const server = http.createServer((req, res) => {
         res.writeHead(201, { "Content-Type": "application/json", ...cors });
         res.end(JSON.stringify(data));
       } catch {
-        res.writeHead(400, cors); res.end(JSON.stringify({ code: "BAD_REQUEST", message: "invalid JSON" }));
+        res.writeHead(400, cors);
+        res.end(JSON.stringify({ code: "BAD_REQUEST", message: "invalid JSON" }));
       }
     });
     return;
   }
 
-  // Execution listesi getir
-  if (req.url === "/execs" && req.method === "GET") {
+  // Execution listesi getir (opsiyonel: from/to uygulanabilir)
+  if (req.url.startsWith("/execs") && req.method === "GET") {
+    const u = new URL(req.url, `http://localhost:${PORT}`);
+    const from = u.searchParams.get("from");
+    const to = u.searchParams.get("to");
+    const filtered = byDateRange(executions, from, to);
+
     res.writeHead(200, { "Content-Type": "application/json", ...cors });
-    return res.end(JSON.stringify(executions));
+    return res.end(JSON.stringify(filtered));
   }
 
   res.writeHead(404, cors);
