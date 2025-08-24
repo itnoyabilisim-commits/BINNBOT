@@ -12,3 +12,7 @@
 - Docs: PRODUCT_OVERVIEW + roadmap + admin_panel + homepage + menus tamamlandı
 
 ---
+## [0.1.1] - 2025-08-24
+### Changed
+- `POST /robots`: `name` boş gelirse otomatik "Robot – SYMBOL – side" atanır.
+- `openapi.yaml`: `RobotCreate.name` açıklaması güncellendi.
