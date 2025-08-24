@@ -20,3 +20,13 @@ curl http://localhost:8080/healthz
 - Reporting: http://localhost:8092
 - Scheduler: http://localhost:8093
 - Notifier: http://localhost:8094
+### Postgres (Reporting) – Opsiyonel
+Reporting servisinin kalıcı çalışması için `.env` içine `DATABASE_URL` ekleyin.
+
+Yerel `deploy/docker-compose.dev.yml` içindeki TimescaleDB ayarları:
+- user: `dev`
+- password: `dev`
+- db: `tsdb`
+- port: `5433` (host) → `5432` (container)
+
+Örnek:
