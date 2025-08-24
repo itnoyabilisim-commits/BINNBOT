@@ -109,6 +109,17 @@ const server = http.createServer((req, res) => {
   }
 
   // ====== BINANCE (REST) ======
+  // 0) ping (public)
+  if (req.url === "/exchange/binance/ping" && req.method === "GET") {
+    (async () => {
+      const r = await binanceRestPublic("/api/v3/ping");
+      if (!r.ok) {
+        const m = normalizeBinanceError(r);
+        return error(res, m.code, m.message, m.status);
+      }
+      return send(res, r.status, { ping: "pong", base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
+    })(); return;
+  }
   // 1) server time (public)
   if (req.url === "/exchange/binance/time" && req.method === "GET") {
     (async () => {
