@@ -2,7 +2,7 @@ import http from "http";
 import { randomUUID } from "crypto";
 import { readRobots, writeRobots } from "./storage.js";
 import { login, verify, issueToken, verifyToken } from "./auth.js"; // ← refresh için eklendi
-import { publishOrderRequested } from "./events.js";
+import { publishOrderRequested, sendExecutionToReporting } from "./events.js";
 
 const SCANNER_URL   = process.env.SCANNER_URL   || "";
 const REPORTING_URL = process.env.REPORTING_URL || "";
@@ -99,6 +99,17 @@ const server = http.createServer((req, res) => {
 
       // event publish (stub)
       publishOrderRequested({ robotId: r.id, symbol: r.symbol, side: r.side });
+
+      // reporting'e dummy execution gönder (akış görünür olsun)
+      sendExecutionToReporting({
+        robotId: r.id,
+        symbol: r.symbol,
+        side: r.side,
+        qty: 100,
+        price: 42000,
+        pnl: (Math.random() * 200 - 100).toFixed(2),
+        ts: new Date().toISOString()
+      });
 
       return send(res, 201, r);
     });
