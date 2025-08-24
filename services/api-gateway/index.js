@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { readRobots, writeRobots } from "./storage.js";
 import { login, verify, issueToken, verifyToken } from "./auth.js";
 import { publishOrderRequested, sendExecutionToReporting } from "./events.js";
+import { binanceRestPublic, binanceRestSigned, BINANCE_INFO } from "../lib/binance.js";
 
 const SCANNER_URL   = process.env.SCANNER_URL   || "";
 const REPORTING_URL = process.env.REPORTING_URL || "";
@@ -10,7 +11,7 @@ const REPORTING_URL = process.env.REPORTING_URL || "";
 // ==== rate limit (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
-const rlMap = new Map(); // ip -> { count, start }
+const rlMap = new Map();
 
 function rateLimit(req, res) {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString();
@@ -37,11 +38,9 @@ function send(res, code, data, headers = {}) {
   res.writeHead(code, h);
   res.end(typeof data === "string" ? data : JSON.stringify(data));
 }
-
 function error(res, code, message, status = 400, headers = {}) {
   return send(res, status, { code, message }, headers);
 }
-
 function parseBody(req, res, cb) {
   let body = "";
   req.on("data", (c) => (body += c));
@@ -50,7 +49,6 @@ function parseBody(req, res, cb) {
     catch { return error(res, "BAD_REQUEST", "invalid JSON", 400); }
   });
 }
-
 async function safeFetch(url, init) {
   try {
     const r = await fetch(url, init);
@@ -89,14 +87,13 @@ const server = http.createServer((req, res) => {
     res.writeHead(200); return res.end("ok");
   }
 
-  // AUTH
+  // ====== AUTH ======
   if (req.url === "/auth/login" && req.method === "POST") {
     return parseBody(req, res, ({ email, password }) => {
       try { return send(res, 200, login(email, password)); }
       catch (e) { return error(res, "BAD_REQUEST", e.message || "login failed", 400); }
     });
   }
-
   if (req.url === "/auth/refresh" && req.method === "POST") {
     return parseBody(req, res, ({ refreshToken }) => {
       const payload = refreshToken ? verifyToken(refreshToken, "refresh") : null;
@@ -106,12 +103,37 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  // ROBOTS
+  // ====== BINANCE (gerçek REST başlangıç) ======
+  if (req.url === "/exchange/binance/time" && req.method === "GET") {
+    (async () => {
+      const r = await binanceRestPublic("/api/v3/time");
+      return send(res, r.ok ? r.status : 502, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
+    })(); return;
+  }
+
+  if (req.url === "/exchange/binance/account" && req.method === "GET") {
+    // İmzalı çağrı, key yoksa 400
+    (async () => {
+      const r = await binanceRestSigned("GET", "/api/v3/account");
+      return send(res, r.ok ? r.status : (r.status || 502), r.json);
+    })(); return;
+  }
+
+  if (req.url === "/exchange/binance/order/test" && req.method === "POST") {
+    // Sadece test order (account izinleri trade-only olmalı)
+    return parseBody(req, res, async (body) => {
+      const { symbol, side = "BUY", type = "MARKET", quantity } = body || {};
+      if (!symbol || !quantity) return error(res, "BAD_REQUEST", "symbol ve quantity gerekli", 400);
+      const r = await binanceRestSigned("POST", "/api/v3/order/test", { symbol, side, type, quantity });
+      return send(res, r.ok ? r.status : (r.status || 502), r.json || { ok: true });
+    });
+  }
+
+  // ====== ROBOTS ======
   if (req.url === "/robots" && req.method === "GET") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     return send(res, 200, { items: readRobots() });
   }
-
   if (req.url === "/robots" && req.method === "POST") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     return parseBody(req, res, (body) => {
@@ -135,24 +157,17 @@ const server = http.createServer((req, res) => {
 
       publishOrderRequested({ robotId: r.id, symbol: r.symbol, side: r.side });
       sendExecutionToReporting({
-        robotId: r.id,
-        symbol: r.symbol,
-        side: r.side,
-        qty: 100,
-        price: 42000,
-        pnl: (Math.random() * 200 - 100).toFixed(2),
+        robotId: r.id, symbol: r.symbol, side: r.side,
+        qty: 100, price: 42000, pnl: (Math.random() * 200 - 100).toFixed(2),
         ts: new Date().toISOString()
       });
 
       return send(res, 201, r);
     });
   }
-
-  // ROBOTS {id} PATCH
   if (req.url?.startsWith("/robots/") && req.method === "PATCH") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     const id = req.url.split("/")[2];
-
     return parseBody(req, res, (body) => {
       if (body.market && !["spot","futures"].includes(body.market)) return error(res, "BAD_REQUEST", "market hatalı", 400);
       if (body.side && !["buy","sell","long","short"].includes(body.side)) return error(res, "BAD_REQUEST", "side hatalı", 400);
@@ -168,30 +183,23 @@ const server = http.createServer((req, res) => {
           if (!body.schedule.startAt && !body.schedule.stopAt) return error(res, "BAD_REQUEST", "schedule.startAt veya schedule.stopAt gerekli", 400);
         }
       }
-
-      const list = readRobots();
-      const idx = list.findIndex(x => x.id === id);
+      const list = readRobots(); const idx = list.findIndex(x => x.id === id);
       if (idx === -1) return error(res, "NOT_FOUND", "robot not found", 404);
-
       list[idx] = { ...list[idx], ...body, updatedAt: new Date().toISOString() };
       writeRobots(list);
       return send(res, 200, list[idx]);
     });
   }
-
-  // ROBOTS {id} DELETE
   if (req.url?.startsWith("/robots/") && req.method === "DELETE") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     const id = req.url.split("/")[2];
     const list = readRobots();
-    const exists = list.some(x => x.id === id);
-    if (!exists) return error(res, "NOT_FOUND", "robot not found", 404);
+    if (!list.some(x => x.id === id)) return error(res, "NOT_FOUND", "robot not found", 404);
     writeRobots(list.filter(x => x.id !== id));
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
-    return res.end();
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*" }); return res.end();
   }
 
-  // REPORTS /execs proxy (from/to passthrough)
+  // ====== REPORTS ======
   if (req.url.startsWith("/reports/execs") && req.method === "GET") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (REPORTING_URL) {
@@ -204,8 +212,6 @@ const server = http.createServer((req, res) => {
       return send(res, 200, []);
     }
   }
-
-  // REPORTS /summary proxy (from/to passthrough)
   if (req.url.startsWith("/reports/summary") && req.method === "GET") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (REPORTING_URL) {
@@ -222,7 +228,7 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // SCANNER templates
+  // ====== SCANNER ======
   if (req.url === "/scanner/templates" && req.method === "GET") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
     if (SCANNER_URL) {
@@ -237,25 +243,16 @@ const server = http.createServer((req, res) => {
       ]);
     }
   }
-
-  // SCANNER search (template VEYA rules zorunlu)
   if (req.url === "/scanner/search" && req.method === "POST") {
     const user = verify(req); if (!user) return error(res, "UNAUTHORIZED", "auth required", 401);
-
     return parseBody(req, res, async (body) => {
       const { template, rules } = body || {};
       const hasTemplate = typeof template === "string" && template.length > 0;
       const hasRules = Array.isArray(rules) && rules.length > 0;
-
       if (!hasTemplate && !hasRules) {
-        return error(
-          res,
-          "BAD_REQUEST",
-          "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }",
-          400
-        );
+        return error(res, "BAD_REQUEST",
+          "template veya rules zorunlu (en az biri). Örn: { template: 'trend-strong' } veya { rules: [...] }", 400);
       }
-
       if (SCANNER_URL) {
         const r = await safeFetch(`${SCANNER_URL}/search`, {
           method: "POST",
