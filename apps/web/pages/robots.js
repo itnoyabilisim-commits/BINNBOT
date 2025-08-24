@@ -1,92 +1,87 @@
-// apps/web/pages/robots.js
+// apps/web/pages/reports.js
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../lib/api";
+import { apiGet } from "../lib/api";
 
-export default function Robots() {
-  const [robots, setRobots] = useState([]);
-  const [form, setForm] = useState({
-    name: "Yeni Robot",
-    market: "spot",
-    symbol: "BTCUSDT",
-    side: "buy"
-  });
+export default function Reports() {
+  const [summary, setSummary] = useState(null);
   const [msg, setMsg] = useState("");
 
-  // Listeyi yükle
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiGet("/robots");
-        setRobots(data.items || []);
+        const data = await apiGet("/reports/summary");
+        // gateway dummy: { pnlTotal, winrate, maxDrawdown, pnlDaily: [...] }
+        // veya reporting servisi gerçek DB satırları dönebilir (array)
+        setSummary(data);
       } catch (e) {
-        setMsg("Liste alınamadı (login gerekebilir)");
+        setMsg("Rapor alınamadı (login gerekebilir)");
       }
     })();
   }, []);
 
-  async function createRobot(e) {
-    e.preventDefault();
-    setMsg("Kaydediliyor...");
-    try {
-      const r = await apiPost("/robots", form);
-      setRobots(prev => [...prev, r]);
-      setMsg("Robot oluşturuldu");
-    } catch (e) {
-      setMsg("Hata: " + e.message);
-    }
-  }
-
-  function onChange(e) {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-  }
+  // Her iki olasılığı da destekle (objeyse özet, array ise satır listesi)
+  const isArray = Array.isArray(summary);
 
   return (
     <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
-      <h1>Robotlar</h1>
-      <p style={{ color: "#666" }}>Spot (Plus) · Vadeli (Pro) — API'ye bağlı dummy</p>
+      <h1>Raporlar</h1>
 
-      {/* Yeni Robot Formu */}
-      <form onSubmit={createRobot} style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "20px" }}>
-        <input name="name"   value={form.name}   onChange={onChange} placeholder="Ad" />
-        <select name="market" value={form.market} onChange={onChange}>
-          <option value="spot">spot</option>
-          <option value="futures">futures</option>
-        </select>
-        <input name="symbol" value={form.symbol} onChange={onChange} placeholder="Symbol (BTCUSDT)" />
-        <select name="side" value={form.side} onChange={onChange}>
-          <option value="buy">buy</option>
-          <option value="sell">sell</option>
-          <option value="long">long</option>
-          <option value="short">short</option>
-        </select>
-        <button type="submit" style={{ gridColumn: "span 4", background: "#F4B400", border: "none", padding: "10px", borderRadius: "6px", cursor: "pointer" }}>
-          + Oluştur
-        </button>
-      </form>
+      {msg && <p style={{ color: "crimson" }}>{msg}</p>}
 
-      {msg && <p style={{ marginBottom: 10 }}>{msg}</p>}
+      {!summary && !msg && <p>Yükleniyor...</p>}
 
-      {/* Liste */}
-      <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead>
-          <tr style={{ background: "#eee" }}>
-            <th>ID</th><th>Ad</th><th>Market</th><th>Symbol</th><th>Side</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {robots.map(r => (
-            <tr key={r.id}>
-              <td>{r.id}</td>
-              <td>{r.name}</td>
-              <td>{r.market}</td>
-              <td>{r.symbol}</td>
-              <td>{r.side}</td>
-              <td>{r.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Özet modu (gateway dummy/summary.json şeması) */}
+      {!isArray && summary && (
+        <>
+          <div style={{ display: "flex", gap: 20 }}>
+            <div><b>Toplam PnL:</b> ₺{summary.pnlTotal}</div>
+            <div><b>Winrate:</b> {(summary.winrate * 100).toFixed(0)}%</div>
+            <div><b>Max DD:</b> {(summary.maxDrawdown * 100).toFixed(0)}%</div>
+          </div>
+
+          <h2 style={{ marginTop: 20 }}>Günlük PnL</h2>
+          <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr style={{ background: "#eee" }}>
+                <th>Tarih</th><th>PnL (₺)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(summary.pnlDaily || []).map((d, i) => (
+                <tr key={i}>
+                  <td>{d.date}</td>
+                  <td style={{ color: d.pnl >= 0 ? "green" : "red" }}>{d.pnl}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {/* Liste modu (reporting DB'den dizi dönerse) */}
+      {isArray && summary && (
+        <>
+          <h2>Son Kayıtlar</h2>
+          <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr style={{ background: "#eee" }}>
+                <th>Tarih</th><th>E-posta</th><th>PnL</th><th>Winrate</th><th>Max DD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.created_at || r.date || "-"}</td>
+                  <td>{r.user_email || "-"}</td>
+                  <td style={{ color: (r.pnl ?? 0) >= 0 ? "green" : "red" }}>{r.pnl ?? "-"}</td>
+                  <td>{r.winrate ?? "-"}</td>
+                  <td>{r.max_drawdown ?? r.maxDrawdown ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }
