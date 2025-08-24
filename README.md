@@ -11,3 +11,8 @@ Klasörler:
 - .github/workflows/ci.yml
 ## Çalıştırma Rehberi
 Detaylı adımlar için [README_RUN.md](./README_RUN.md) dosyasına bakın.
+## Kullanıcı Akışı (Özet)
+1. /login → { email, password } ile giriş yap → access + refresh token localStorage’a yazılır
+2. Korumalı sayfalarda (_app.js): token yoksa /login’e yönlendir
+3. API çağrısı 401 dönerse (api.js): /auth/refresh ile yeni access alınır, istek tekrar edilir
+4. /logout → tokenlar temizlenir, /login’e yönlendirilir
