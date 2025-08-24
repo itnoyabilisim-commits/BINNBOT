@@ -30,3 +30,12 @@ Yerel `deploy/docker-compose.dev.yml` içindeki TimescaleDB ayarları:
 - port: `5433` (host) → `5432` (container)
 
 Örnek:> DATABASE_URL yoksa reporting **bellek modunda** çalışır (kalıcılık olmaz).
+# robot ekle
+curl -X POST http://localhost:8080/robots \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"symbol":"BTCUSDT","side":"buy"}'
+
+# robot sil
+curl -X DELETE http://localhost:8080/robots/<ROBOT_ID> \
+  -H "Authorization: Bearer <ACCESS_TOKEN>"
