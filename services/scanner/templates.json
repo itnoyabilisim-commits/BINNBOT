@@ -1,4 +1,19 @@
 [
-  { "key": "trend-strong", "name": "Güçlü Trend Coinler", "market": "spot" },
-  { "key": "rsi-oversold", "name": "RSI Düşük (Alım Fırsatı)", "market": "spot" }
+  {
+    "key": "trend-strong",
+    "name": "Güçlü Trend Coinler",
+    "market": "spot",
+    "rules": [
+      { "field": "ema50", "op": "gt",  "valueField": "ema200" },
+      { "field": "adx",   "op": "gte", "value": 25 }
+    ]
+  },
+  {
+    "key": "rsi-oversold",
+    "name": "RSI Düşük (Alım Fırsatı)",
+    "market": "spot",
+    "rules": [
+      { "field": "rsi", "op": "lte", "value": 30 }
+    ]
+  }
 ]
