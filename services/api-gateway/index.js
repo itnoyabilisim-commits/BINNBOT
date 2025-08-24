@@ -115,7 +115,21 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  // ... (PATCH, DELETE, TESTS, SCANNER, REPORTS aynı kalıyor)
+  // REPORTS /execs proxy
+  if (req.url.startsWith("/reports/execs") && req.method === "GET") {
+    const user = verify(req); if (!user) return send(res, 401, { code: "UNAUTHORIZED" });
+    if (REPORTING_URL) {
+      (async () => {
+        const r = await safeFetch(`${REPORTING_URL}/execs`);
+        return send(res, r.ok ? r.status : 502, r.json);
+      })();
+    } else {
+      return send(res, 200, []); // dummy boş liste
+    }
+    return;
+  }
+
+  // ... (PATCH, DELETE, TESTS, SCANNER, REPORTS summary aynı kalıyor)
 
   send(res, 404, "not found");
 });
