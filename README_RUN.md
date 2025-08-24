@@ -14,3 +14,9 @@ node services/api-gateway/index.js
 curl http://localhost:8080/healthz
 ## Admin Kısayolları
 - Sistem Durumu (health): bkz. [docs/product/admin-system-health.md](./docs/product/admin-system-health.md)
+### Servis URL notu (yerel)
+- Gateway: http://localhost:8080
+- Scanner: http://localhost:8091
+- Reporting: http://localhost:8092
+- Scheduler: http://localhost:8093
+- Notifier: http://localhost:8094
