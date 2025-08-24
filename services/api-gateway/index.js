@@ -10,6 +10,7 @@ import {
   BINANCE_INFO,
   normalizeBinanceError
 } from "../lib/binance.js";
+import { ensureExchangeInfo, getSymbolFilters } from "../lib/exchangeInfo.js";
 
 const SCANNER_URL   = process.env.SCANNER_URL   || "";
 const REPORTING_URL = process.env.REPORTING_URL || "";
@@ -81,6 +82,39 @@ function preflight(req, res) {
   return false;
 }
 
+// ==== miktar yuvarlama & doğrulama ====
+function roundToStep(x, step) {
+  if (!step || step <= 0) return x;
+  const p = Math.round( Math.log10(1/step) );
+  return Number((Math.floor(x / step) * step).toFixed(Math.max(p,0)));
+}
+function validateOrderQtyPrice(symbol, type, quantity, price) {
+  const f = getSymbolFilters(symbol);
+  if (!f) return { ok: false, message: "exchangeInfo yok/yenileyin" };
+
+  const { minQty, stepSize } = f.lotSize || {};
+  if (quantity != null) {
+    const q = Number(quantity);
+    if (isNaN(q) || q <= 0) return { ok: false, message: "quantity geçersiz" };
+    if (minQty && q < minQty) return { ok: false, message: `quantity minQty (${minQty}) altı` };
+    if (stepSize && ( (q / stepSize) % 1 > 1e-8 )) {
+      const fixed = roundToStep(q, stepSize);
+      return { ok: false, message: `quantity stepSize (${stepSize}) uyumsuz. Örn: ${fixed}` };
+    }
+  }
+  if (type === "LIMIT") {
+    const p = Number(price);
+    if (isNaN(p) || p <= 0) return { ok: false, message: "price geçersiz" };
+    const minNotional = f.minNotional?.minNotional || 0;
+    if (minNotional && quantity != null) {
+      if (Number(price) * Number(quantity) < minNotional) {
+        return { ok: false, message: `price*quantity minNotional (${minNotional}) altı` };
+      }
+    }
+  }
+  return { ok: true };
+}
+
 const server = http.createServer((req, res) => {
   if (preflight(req, res)) return;
 
@@ -109,7 +143,7 @@ const server = http.createServer((req, res) => {
   }
 
   // ====== BINANCE (REST) ======
-  // 0) ping (public)
+  // 0) ping
   if (req.url === "/exchange/binance/ping" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/ping");
@@ -120,71 +154,87 @@ const server = http.createServer((req, res) => {
       return send(res, r.status, { ping: "pong", base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
     })(); return;
   }
-  // 1) server time (public)
+
+  // 1) server time
   if (req.url === "/exchange/binance/time" && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/time");
       if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
+        const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status);
       }
       return send(res, r.status, { ...r.json, base: BINANCE_INFO.BASE, sandbox: BINANCE_INFO.SANDBOX });
     })(); return;
   }
-  // 2) account (signed)
+
+  // 1.1) exchangeInfo cache refresh
+  if (req.url === "/exchange/binance/exchangeInfo/refresh" && req.method === "POST") {
+    (async () => {
+      const r = await ensureExchangeInfo(true);
+      if (!r.ok) return error(res, "UPSTREAM_ERROR", "exchangeInfo alınamadı", r.status || 502);
+      return send(res, 200, { ok: true, fromCache: r.fromCache === true });
+    })(); return;
+  }
+
+  // 2) account (SIGNED)
   if (req.url === "/exchange/binance/account" && req.method === "GET") {
     (async () => {
       const r = await binanceRestSigned("GET", "/api/v3/account");
-      if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
-      }
+      if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
       return send(res, r.status, r.json);
     })(); return;
   }
+
   // 3) exchangeInfo (public)
   if (req.url.startsWith("/exchange/binance/exchangeInfo") && req.method === "GET") {
     (async () => {
       const r = await binanceRestPublic("/api/v3/exchangeInfo");
-      if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
-      }
+      if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
       return send(res, r.status, r.json);
     })(); return;
   }
-  // 4) test order (signed)
+
+  // 4) test order (SIGNED) – minQty/stepSize kontrolü
   if (req.url === "/exchange/binance/order/test" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
-      const { symbol, side = "BUY", type = "MARKET", quantity } = body || {};
-      if (!symbol || !quantity) return error(res, "BAD_REQUEST", "symbol ve quantity gerekli", 400);
-      const r = await binanceRestSigned("POST", "/api/v3/order/test", { symbol, side, type, quantity });
-      if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
+      const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
+      if (!symbol) return error(res, "BAD_REQUEST", "symbol gerekli", 400);
+      await ensureExchangeInfo(false);
+      const chk = validateOrderQtyPrice(symbol, type, quantity, price);
+      if (!chk.ok) return error(res, "BAD_REQUEST", chk.message, 400);
+
+      if (type === "MARKET" && !quantity) return error(res, "BAD_REQUEST", "MARKET için quantity gerekli", 400);
+      if (type === "LIMIT" && (!price || !timeInForce)) {
+        return error(res, "BAD_REQUEST", "LIMIT için price ve timeInForce gerekli", 400);
       }
-      return send(res, r.status, r.json || { ok: true });
+
+      const params = { symbol, side, type, quantity, price, timeInForce };
+      const r = await binanceRestSigned("POST", "/api/v3/order/test", params);
+      if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
+      return send(res, 200, r.json || { ok: true });
     });
   }
-  // 5) real order place (signed)
+
+  // 5) real order place (SIGNED) – minQty/stepSize kontrolü
   if (req.url === "/exchange/binance/order" && req.method === "POST") {
     return parseBody(req, res, async (body) => {
       const { symbol, side = "BUY", type = "MARKET", quantity, price, timeInForce } = body || {};
-      if (!symbol || !type) return error(res, "BAD_REQUEST", "symbol ve type gerekli", 400);
+      if (!symbol) return error(res, "BAD_REQUEST", "symbol gerekli", 400);
+      await ensureExchangeInfo(false);
+      const chk = validateOrderQtyPrice(symbol, type, quantity, price);
+      if (!chk.ok) return error(res, "BAD_REQUEST", chk.message, 400);
+
       if (type === "MARKET" && !quantity) return error(res, "BAD_REQUEST", "MARKET için quantity gerekli", 400);
       if (type === "LIMIT" && (!price || !timeInForce)) {
         return error(res, "BAD_REQUEST", "LIMIT için price ve timeInForce gerekli", 400);
       }
       const params = { symbol, side, type, quantity, price, timeInForce, newClientOrderId: `bb-${Date.now()}` };
       const r = await binanceRestSigned("POST", "/api/v3/order", params);
-      if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
-      }
+      if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
       return send(res, r.status, r.json);
     });
   }
-  // 6) cancel order (signed)
+
+  // 6) cancel order (SIGNED)
   if (req.url === "/exchange/binance/order" && req.method === "DELETE") {
     return parseBody(req, res, async (body) => {
       const { symbol, orderId, origClientOrderId } = body || {};
@@ -193,10 +243,7 @@ const server = http.createServer((req, res) => {
       }
       const params = { symbol, orderId, origClientOrderId };
       const r = await binanceRestSigned("DELETE", "/api/v3/order", params);
-      if (!r.ok) {
-        const m = normalizeBinanceError(r);
-        return error(res, m.code, m.message, m.status);
-      }
+      if (!r.ok) { const m = normalizeBinanceError(r); return error(res, m.code, m.message, m.status); }
       return send(res, r.status, r.json);
     });
   }
