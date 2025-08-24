@@ -1,50 +1,62 @@
 // services/reporting/index.js
 import http from "http";
-import { readFileSync, existsSync } from "fs";
-import { dirname } from "path";
-import { fileURLToPath } from "url";
+import { init, insertReport, getLatest } from "./db.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.REPORTING_PORT || 8092;
 
-function readSummary() {
-  const p = `${__dirname}/sample-data/summary.json`;
-  if (!existsSync(p)) {
-    return {
-      pnlTotal: 0, winrate: 0, maxDrawdown: 0, pnlDaily: []
-    };
-  }
-  try {
-    const raw = readFileSync(p, "utf8") || "{}";
-    return JSON.parse(raw);
-  } catch {
-    return { pnlTotal: 0, winrate: 0, maxDrawdown: 0, pnlDaily: [] };
-  }
-}
+// init çalıştır
+init().catch(err => console.error("DB init error", err));
 
 const server = http.createServer((req, res) => {
-  // CORS
+  const cors = { "Access-Control-Allow-Origin": "*" };
+
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
     });
     return res.end();
   }
-  const cors = { "Access-Control-Allow-Origin": "*" };
 
   if (req.url === "/healthz" && req.method === "GET") {
     res.writeHead(200); return res.end("ok");
   }
 
-  if (req.url.startsWith("/summary") && req.method === "GET") {
-    res.writeHead(200, { "Content-Type": "application/json", ...cors });
-    return res.end(JSON.stringify(readSummary()));
+  if (req.url === "/reports/summary" && req.method === "GET") {
+    getLatest().then(rows => {
+      res.writeHead(200, { "Content-Type": "application/json", ...cors });
+      res.end(JSON.stringify(rows));
+    }).catch(e => {
+      res.writeHead(500, cors);
+      res.end(JSON.stringify({ code:"DB_ERROR", message:String(e) }));
+    });
+    return;
+  }
+
+  if (req.url === "/reports/add" && req.method === "POST") {
+    let body = "";
+    req.on("data", (c)=> body += c);
+    req.on("end", ()=>{
+      try {
+        const r = JSON.parse(body || "{}");
+        insertReport(r).then(()=>{
+          res.writeHead(201, cors);
+          res.end("ok");
+        }).catch(e=>{
+          res.writeHead(500, cors);
+          res.end(JSON.stringify({ code:"DB_ERROR", message:String(e) }));
+        });
+      } catch {
+        res.writeHead(400, cors);
+        res.end(JSON.stringify({ code:"BAD_REQUEST", message:"invalid JSON" }));
+      }
+    });
+    return;
   }
 
   res.writeHead(404, cors);
   res.end("not found");
 });
 
-server.listen(PORT, () => console.log(`reporting service on :${PORT}`));
+server.listen(PORT, ()=> console.log(`reporting service on :${PORT}`));
