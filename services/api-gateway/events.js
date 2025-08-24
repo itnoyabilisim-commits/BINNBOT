@@ -1,8 +1,20 @@
 // services/api-gateway/events.js
-// Amaç: robot oluşturulunca "ORDER_REQUESTED" gibi bir event loglamak.
-// RabbitMQ olmadığında sadece console.log yapacağız.
-
 export async function publishOrderRequested(order) {
-  // Normalde amqp publish olur. Şimdilik sadece log:
+  // Şimdilik sadece log
   console.log("[events] ORDER_REQUESTED", order);
+}
+
+export async function sendExecutionToReporting(exec) {
+  try {
+    const url = process.env.REPORTING_URL || "http://localhost:8092";
+    const r = await fetch(`${url}/execs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(exec)
+    });
+    const txt = await r.text();
+    console.log("[events] EXECUTION -> reporting:", r.status, txt);
+  } catch (e) {
+    console.error("[events] EXECUTION send error", e);
+  }
 }
