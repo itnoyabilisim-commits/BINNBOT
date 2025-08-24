@@ -14,6 +14,9 @@ Bu dosya, API Gateway üzerinden **Binance REST** uçlarını hızlıca test etm
 # Gateway health
 curl http://localhost:8080/healthz
 
+# Binance ping (public)
+curl http://localhost:8080/exchange/binance/ping
+
 # Binance server time (public)
 curl http://localhost:8080/exchange/binance/time
 ```
@@ -31,9 +34,6 @@ Yanıt örneği (kısaltılmış):
 {
   "makerCommission": 10,
   "takerCommission": 10,
-  "buyerCommission": 0,
-  "sellerCommission": 0,
-  "canTrade": true,
   "balances": [
     { "asset": "BTC", "free": "0.001", "locked": "0.000" }
   ]
