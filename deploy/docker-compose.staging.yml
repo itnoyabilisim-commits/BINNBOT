@@ -1,0 +1,10 @@
+# deploy/docker-compose.staging.yml
+services:
+  gateway:
+    image: ${DOCKER_IMAGE:-binnbot:latest}
+    container_name: binnbot-gateway
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - /opt/binnbot/.env.staging
