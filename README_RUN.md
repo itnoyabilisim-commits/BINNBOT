@@ -86,3 +86,23 @@ curl -X DELETE http://localhost:8080/exchange/binance/order -H "Content-Type: ap
 - Gateway, Binance yanıtlarından x-mbx-used-weight-1m başlığını okur ve loglar.  
 - 418/429 durumlarında gateway { code: "BINANCE_RATE_LIMIT", ... } döner.  
 - Sık istek yapmayın; dakikada 1200 weight sınırı var. Gerektiğinde 3–5 saniye bekleyin.
+
+### Notifier – cURL örneği
+```bash
+# Email
+curl -X POST http://localhost:8080/notify \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"type":"email","to":"user@example.com","subject":"BINNBOT Test","msg":"Merhaba!"}'
+
+# SMS
+curl -X POST http://localhost:8080/notify \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"type":"sms","to":"+905551112233","msg":"BINNBOT SMS testi"}'
+
+# Push
+curl -X POST http://localhost:8080/notify \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"type":"push","to":"device-token-xyz","msg":"BINNBOT push testi"}'
