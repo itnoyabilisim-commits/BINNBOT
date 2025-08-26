@@ -1,0 +1,16 @@
+{
+  "name": "binnbot",
+  "version": "1.0.0",
+  "description": "BINNBOT monorepo",
+  "private": true,
+  "scripts": {
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:admin": "cd apps/admin && npm run dev",
+    "dev:gateway": "node services/api-gateway/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.4.5"
+  }
+}
