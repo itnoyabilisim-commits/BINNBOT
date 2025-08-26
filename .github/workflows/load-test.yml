@@ -1,0 +1,47 @@
+name: Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Gateway base URL"
+        required: false
+        default: "http://localhost:8080"
+      robots:
+        description: "Robot sayısı"
+        required: false
+        default: "20"
+      conc:
+        description: "Eşzamanlı istek"
+        required: false
+        default: "5"
+      symbol:
+        description: "Sembol"
+        required: false
+        default: "BTCUSDT"
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    env:
+      GW_BASE: ${{ inputs.base }}
+      LOAD_EMAIL: superadmin@binnbot.com
+      LOAD_PASS: 123456
+      LOAD_ROBOTS: ${{ inputs.robots }}
+      LOAD_CONC: ${{ inputs.conc }}
+      LOAD_SYMBOL: ${{ inputs.symbol }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      # Lokal gateway ile test etmek istersen:
+      - name: Start Gateway (local)
+        if: ${{ startsWith(inputs.base, 'http://localhost') }}
+        run: node services/api-gateway/index.js &
+
+      - name: Wait 2s
+        run: sleep 2
+
+      - name: Run Load Test
+        run: node tests/load.api.test.mjs
