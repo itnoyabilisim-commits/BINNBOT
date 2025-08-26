@@ -31,3 +31,26 @@ jobs:
 
       - name: Lint AsyncAPI
         run: spectral lint packages/contracts/asyncapi.yaml
+
+      smoke:
+    runs-on: ubuntu-latest
+    env:
+      GW_BASE: http://localhost:8080
+      SMOKE_EMAIL: superadmin@binnbot.com
+      SMOKE_PASS: 123456
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      # Gateway'i basitçe başlat (node ile)
+      - name: Start Gateway
+        run: node services/api-gateway/index.js &
+      
+      # Küçük bekleme
+      - name: Wait 2s
+        run: sleep 2
+
+      # Smoke test
+      - name: Run Smoke
+        run: node tests/smoke.api.test.mjs
