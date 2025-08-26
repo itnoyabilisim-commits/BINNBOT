@@ -16,6 +16,10 @@ jobs:
         with:
           node-version: 20
 
+      # ✅ Kod biçimi kontrolü (Prettier)
+      - name: Prettier Check
+        run: npx -y prettier@3.3.3 --check "**/*.{js,ts,jsx,tsx,json,md,yaml,yml}"
+
       - name: Install Redocly CLI
         run: npm install -g @redocly/cli
 
