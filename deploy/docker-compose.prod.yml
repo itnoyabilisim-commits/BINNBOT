@@ -1,0 +1,31 @@
+# deploy/docker-compose.prod.yml
+services:
+  gateway:
+    image: ${DOCKER_IMAGE:-binnbot:latest}
+    container_name: binnbot-gateway
+    restart: always
+    expose:
+      - "8080"
+    env_file:
+      - /opt/binnbot/.env.prod
+    networks: [ web ]
+
+  caddy:
+    image: caddy:2
+    container_name: binnbot-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/binnbot/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [ web ]
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:
