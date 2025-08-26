@@ -1,0 +1,80 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Docker image (username/binnbot:tag)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v1.*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ inputs.image != '' && inputs.image || format('{0}/binnbot:latest', secrets.DOCKERHUB_USERNAME) }}
+      PROD_DIR: /opt/binnbot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Prepare files on remote
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          script: |
+            sudo mkdir -p $PROD_DIR
+            # .env.prod
+            cat > $PROD_DIR/.env.prod <<'EOF'
+${{ secrets.PROD_ENV_FILE }}
+EOF
+            # Caddyfile
+            cat > $PROD_DIR/Caddyfile <<'EOF'
+${{ secrets.PROD_CADDYFILE }}
+EOF
+            sudo chmod 600 $PROD_DIR/.env.prod
+
+      - name: Login Docker Hub (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          script: |
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Pull image & up (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          envs: IMAGE,PROD_DIR
+          script: |
+            echo "Using image: $IMAGE"
+            cd $PROD_DIR
+            docker pull "$IMAGE"
+            # compose dosyasını yaz
+            cat > docker-compose.prod.yml <<'EOF'
+$(cat deploy/docker-compose.prod.yml)
+EOF
+            # eski containerları kaldır
+            docker compose -f docker-compose.prod.yml down || true
+            # env için image değişkenini set ederek up
+            DOCKER_IMAGE="$IMAGE" docker compose -f docker-compose.prod.yml up -d
+
+      - name: Health check (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          script: |
+            sleep 5
+            curl -fsS https://${{ secrets.PROD_DOMAIN }}/healthz || (docker logs --tail=120 binnbot-gateway && exit 1)
