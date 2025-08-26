@@ -53,3 +53,17 @@
 ### Changed
 - Binance: exchangeInfo cache ve minQty/stepSize/minNotional doğrulaması
 - README_RUN: Binance cURL örnekleri ve rate-limit notları
+
+- ## [0.4.0] - 2025-08-26 (M3 Complete)
+### Added
+- Futures robot/test uçları (backtest, active, CRUD futures desteği)
+- Admin: Acil Stop (2FA, çift onay, sebep/scope/symbols, pending listesi)
+- RBAC: Rol tabanlı erişim, SuperAdmin rol atama ekranı
+- Notifier: e-posta / SMS / push webhook adaptörleri + admin test UI
+- Audit: filtreleme, CSV+SHA256 export
+- Robot Run → reporting + robot-exec publish + notifier entegrasyonu
+
+### Changed
+- Gateway: robot CRUD futures desteği, emergency-stop akışı iyileştirmeleri
+- Web: Futures test formu parametreli, robots sayfası leverage/margin destekli
+- Admin: Robots listesinde “Çalıştır”, Emergency Stop listesinde “Onayla” kısayolu
