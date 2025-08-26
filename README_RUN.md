@@ -121,3 +121,16 @@ curl -X POST http://localhost:8080/admin/emergency-stop/approve \
 
 # Pending listesi
 curl http://localhost:8080/admin/emergency-stop/requests -H "Authorization: Bearer <ACCESS_TOKEN>"
+
+### Staging hızlı kontroller
+```bash
+# Health
+curl -sf http://STAGING_HOST:8080/healthz
+
+# Version / Metrics
+curl -s http://STAGING_HOST:8080/version | jq .
+curl -s http://STAGING_HOST:8080/metrics | jq .
+curl -s http://STAGING_HOST:8080/metrics.txt
+
+# Logs (sunucuda)
+sudo tail -f /opt/binnbot/logs/gateway.jsonl
