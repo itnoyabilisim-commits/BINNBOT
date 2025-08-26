@@ -7,12 +7,11 @@ on:
         description: "Docker image (username/binnbot:tag)"
         required: false
         default: ""
-  push:
-    tags:
-      - "v*"
 
 jobs:
   deploy:
+    # ✅ Staging secrets eksikse job skip
+    if: ${{ secrets.STAGING_HOST != '' && secrets.STAGING_USER != '' && secrets.STAGING_SSH_KEY != '' && secrets.STAGING_ENV_FILE != '' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
     env:
       IMAGE: ${{ inputs.image != '' && inputs.image || format('{0}/binnbot:latest', secrets.DOCKERHUB_USERNAME) }}
@@ -33,7 +32,6 @@ jobs:
           username: ${{ secrets.STAGING_USER }}
           script: |
             sudo mkdir -p $STAGING_DIR
-            # .env.staging içeriğini GitHub Secret'tan yaz
             cat > $STAGING_DIR/.env.staging <<'EOF'
 ${{ secrets.STAGING_ENV_FILE }}
 EOF
@@ -45,7 +43,6 @@ EOF
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           script: |
-            echo "Login Docker Hub on remote"
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Pull & run container (remote)
