@@ -43,7 +43,19 @@ function send(res,code,data,hdrs={}){const h={"Content-Type":"application/json",
 function error(res, code, message, status=400, hdrs={}){return send(res,status,{code,message},hdrs);}
 function parseBody(req,res,cb){let b="";req.on("data",c=>b+=c);req.on("end",()=>{try{cb(JSON.parse(b||"{}"))}catch{return error(res,"BAD_REQUEST","invalid JSON",400)}});}
 async function safeFetch(url, init){try{const r=await fetch(url,init);const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{j={raw:t}};return {ok:r.ok,status:r.status,json:j}}catch(e){return {ok:false,status:502,json:{code:"UPSTREAM_ERROR",message:String(e)}}}}
-function preflight(req,res){if(req.method==="OPTIONS"){res.writeHead(204,{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,PATCH,DELETE,OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"});res.end();return true}return false}
+function preflight(req,res){if(req.method==="OPTIONS"){res.writeHead(204,{"Content-Type":"application/json","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,PATCH,DELETE,OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"});res.end();return true}return false}
+
+// notifier helper
+async function notifyAdmins(payload){
+  if(!NOTIFIER_URL) return;
+  try{
+    await safeFetch(`${NOTIFIER_URL}/notify`,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+  }catch{}
+}
 
 // ==== audit log ====
 const AUDIT_FILE = "services/api-gateway/tmp/audit.log";
@@ -63,8 +75,8 @@ function auditRead(limit=200){
   }catch{return []}
 }
 
-// ==== emergency stop memory (pending list) ====
-const approvals=new Map(); // key -> { req:{scope,mode,reason,includeOpenOrders,symbols[]}, approvals:Set, executed:boolean, code:string }
+// ==== emergency stop memory ====
+const approvals=new Map(); // key -> { req, approvals:Set, executed, code }
 
 // ==== exchangeInfo validation ====
 function roundToStep(x, step){ if(!step||step<=0) return x; const p=Math.round(Math.log10(1/step)); return Number((Math.floor(x/step)*step).toFixed(Math.max(p,0))); }
@@ -79,7 +91,7 @@ function validateOrderQtyPrice(symbol, type, quantity, price){
   return {ok:true};
 }
 
-// ==== HTTP server ====
+// ==== HTTP SERVER ====
 const server=http.createServer((req,res)=>{
   if(preflight(req,res)) return;
   if(!rateLimit(req,res)) return;
@@ -90,7 +102,8 @@ const server=http.createServer((req,res)=>{
   // auth
   if(req.url==="/auth/login" && req.method==="POST"){
     return parseBody(req,res,({email,password})=>{
-      try{ return send(res,200,login(email,password)); }catch(e){ return error(res,"BAD_REQUEST",e.message,400); }
+      try{ return send(res,200,login(email,password)); }
+      catch(e){ return error(res,"BAD_REQUEST",e.message,400); }
     });
   }
   if(req.url==="/auth/refresh" && req.method==="POST"){
@@ -153,8 +166,39 @@ const server=http.createServer((req,res)=>{
         marginMode: body.market==="futures"? (body.marginMode||"cross"): undefined,
         createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()};
       const list=readRobots(); list.push(r); writeRobots(list);
-      auditLog("robot.create",{id:r.id,market:r.market},user);
+      auditLog("robot.create",{id:r.id,market:r.market,symbol:r.symbol,side:r.side},user);
       return send(res,201,r);
+    });
+  }
+  // RUN robot (mock execution → reporting + (opsiyonel) notifier)
+  if(req.url?.startsWith("/robots/") && req.method==="POST" && req.url.endsWith("/run")){
+    const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
+    const id = req.url.split("/")[2];
+    return parseBody(req,res,async({qty=0.1,price=42000})=>{
+      const list=readRobots(); const rob=list.find(x=>x.id===id);
+      if(!rob) return error(res,"NOT_FOUND","robot not found",404);
+      // mock execution
+      const exec = {
+        robotId: rob.id, symbol: rob.symbol, side: rob.side,
+        qty, price, pnl: Number((Math.random()*200-100).toFixed(2)),
+        ts: new Date().toISOString()
+      };
+      // reporting’e yaz
+      if(REPORTING_URL){
+        await safeFetch(`${REPORTING_URL}/execs`,{
+          method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(exec)
+        });
+      }
+      auditLog("robot.run",{id:rob.id,market:rob.market,exec},user);
+      // notifier (opsiyonel)
+      await notifyAdmins({
+        type:"email",
+        to:"admin@binnbot.com",
+        subject:`Robot Run: ${rob.name}`,
+        msg:`Robot ${rob.name} çalıştı: ${exec.symbol} ${exec.side} qty=${exec.qty} pnl=${exec.pnl}`
+      });
+      return send(res,200,{ ok:true, exec });
     });
   }
 
@@ -169,24 +213,23 @@ const server=http.createServer((req,res)=>{
   }
 
   // ===== EMERGENCY STOP =====
-  // Create: { scope: "spot"|"futures"|"all", mode: "dry-run"|"execute", reason?, includeOpenOrders?, symbols?:[] }
+  // Create
   if(req.url==="/admin/emergency-stop" && req.method==="POST"){
     const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
     if(!requireRole(user,["SuperAdmin","Admin"])) return error(res,"FORBIDDEN","role required",403);
     return parseBody(req,res,({scope="spot",mode="dry-run",reason="",includeOpenOrders=false,symbols=[]})=>{
       const key=`es-${Date.now()}`;
-      const code="000000"; // stub 2FA
-      const reqObj={scope,mode,reason:String(reason||""),includeOpenOrders:Boolean(includeOpenOrders),symbols:Array.isArray(symbols)?symbols:[]};
-      approvals.set(key,{req:reqObj, approvals:new Set([user.sub]), executed:false, code});
-      auditLog("emergency.request",{key,...reqObj},user);
+      const code="000000";
+      approvals.set(key,{req:{scope,mode,reason:String(reason||""),includeOpenOrders:Boolean(includeOpenOrders),symbols:Array.isArray(symbols)?symbols:[]}, approvals:new Set([user.sub]), executed:false, code});
+      auditLog("emergency.request",{key,scope,mode,reason,includeOpenOrders,symbols},user);
       return send(res,200,{ key, require2FA:true, codeHint:"000000" });
     });
   }
-  // Approve: { key, code }
+  // Approve/Execute
   if(req.url==="/admin/emergency-stop/approve" && req.method==="POST"){
     const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
     if(!requireRole(user,["SuperAdmin","Admin"])) return error(res,"FORBIDDEN","role required",403);
-    return parseBody(req,res,({key,code})=>{
+    return parseBody(req,res,async({key,code})=>{
       const rec=approvals.get(key); if(!rec) return error(res,"NOT_FOUND","request not found",404);
       if(rec.executed) return error(res,"BAD_REQUEST","already executed",400);
       if(code!==rec.code) return error(res,"BAD_REQUEST","2FA invalid",400);
@@ -195,16 +238,22 @@ const server=http.createServer((req,res)=>{
         auditLog("emergency.approve.partial",{key},user);
         return send(res,200,{ key, status:"waiting-second-approval" });
       }
-      // çift onay tamam: UYGULAMA (stub)
+      // çift onay tamam → execute (stub)
       rec.executed=true;
-      // burada gerçek dünya: open orders cancel + positions close (scope/symbols’a göre)
       const executedActions = {
         scope: rec.req.scope,
-        closedPositions: rec.req.scope!=="spot" ? 3 : 0, // demo
+        closedPositions: rec.req.scope!=="spot" ? 3 : 0,
         canceledOrders: rec.req.includeOpenOrders ? 5 : 0,
         symbols: rec.req.symbols
       };
       auditLog("emergency.execute",{key, ...executedActions, reason:rec.req.reason},user);
+      // notifier (opsiyonel)
+      await notifyAdmins({
+        type:"email",
+        to:"admin@binnbot.com",
+        subject:`Emergency Stop Executed (${rec.req.scope})`,
+        msg:`Mode=${rec.req.mode} Reason="${rec.req.reason}" Symbols=${rec.req.symbols.join(",")||"-"} Closed=${executedActions.closedPositions} Canceled=${executedActions.canceledOrders}`
+      });
       return send(res,200,{ key, status:"executed", ...executedActions });
     });
   }
@@ -223,10 +272,11 @@ const server=http.createServer((req,res)=>{
     return send(res,200,{items:auditRead(200)});
   }
 
+  // ===== fallback =====
   return error(res,"NOT_FOUND","not found",404);
 });
 
-// === Dashboard WS (dummy) ===
+// === Dashboard WS (dummy akış) ===
 const wss=new WebSocketServer({port:8090});
 setInterval(()=>{
   if(wss.clients.size===0) return;
