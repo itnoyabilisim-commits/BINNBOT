@@ -63,10 +63,23 @@ function auditRead(limit=200){
   }catch{return []}
 }
 
-// ==== emergency stop memory ====
-const approvals=new Map();
+// ==== emergency stop memory (pending list) ====
+const approvals=new Map(); // key -> { req:{scope,mode,reason,includeOpenOrders,symbols[]}, approvals:Set, executed:boolean, code:string }
 
-// ==== HTTP SERVER ====
+// ==== exchangeInfo validation ====
+function roundToStep(x, step){ if(!step||step<=0) return x; const p=Math.round(Math.log10(1/step)); return Number((Math.floor(x/step)*step).toFixed(Math.max(p,0))); }
+function validateOrderQtyPrice(symbol, type, quantity, price){
+  const f=getSymbolFilters(symbol); if(!f) return {ok:false,message:"exchangeInfo yok/yenileyin"};
+  const {minQty,stepSize}=f.lotSize||{};
+  if(quantity!=null){const q=Number(quantity); if(isNaN(q)||q<=0) return {ok:false,message:"quantity geçersiz"};
+    if(minQty && q<minQty) return {ok:false,message:`quantity minQty (${minQty}) altı`};
+    if(stepSize && ((q/stepSize)%1>1e-8)){const fixed=roundToStep(q,stepSize); return {ok:false,message:`quantity stepSize (${stepSize}) uyumsuz. Örn: ${fixed}`};}}
+  if(type==="LIMIT"){const p=Number(price); if(isNaN(p)||p<=0) return {ok:false,message:"price geçersiz"};
+    const mn=f.minNotional?.minNotional||0; if(mn && quantity!=null){ if(Number(price)*Number(quantity)<mn) return {ok:false,message:`price*quantity minNotional (${mn}) altı`};}}
+  return {ok:true};
+}
+
+// ==== HTTP server ====
 const server=http.createServer((req,res)=>{
   if(preflight(req,res)) return;
   if(!rateLimit(req,res)) return;
@@ -77,8 +90,7 @@ const server=http.createServer((req,res)=>{
   // auth
   if(req.url==="/auth/login" && req.method==="POST"){
     return parseBody(req,res,({email,password})=>{
-      try{ return send(res,200,login(email,password)); }
-      catch(e){ return error(res,"BAD_REQUEST",e.message,400); }
+      try{ return send(res,200,login(email,password)); }catch(e){ return error(res,"BAD_REQUEST",e.message,400); }
     });
   }
   if(req.url==="/auth/refresh" && req.method==="POST"){
@@ -132,7 +144,10 @@ const server=http.createServer((req,res)=>{
   if(req.url==="/robots" && req.method==="POST"){
     const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
     return parseBody(req,res,(body)=>{
-      const r={id:randomUUID(), name:body.name||`Robot – ${body.symbol||""} – ${body.side||""}`,
+      if(!body.symbol) return error(res,"BAD_REQUEST","symbol gerekli",400);
+      if(!["buy","sell","long","short"].includes(body.side)) return error(res,"BAD_REQUEST","side hatalı",400);
+      if(body.market && !["spot","futures"].includes(body.market)) return error(res,"BAD_REQUEST","market hatalı",400);
+      const r={id:randomUUID(), name:body.name||`Robot – ${body.symbol||"SYMBOL"} – ${body.side||"side"}`,
         market:body.market||"spot", symbol:body.symbol, side:body.side, status:"active",
         leverage: body.market==="futures"? (body.leverage||5): undefined,
         marginMode: body.market==="futures"? (body.marginMode||"cross"): undefined,
@@ -154,31 +169,51 @@ const server=http.createServer((req,res)=>{
   }
 
   // ===== EMERGENCY STOP =====
+  // Create: { scope: "spot"|"futures"|"all", mode: "dry-run"|"execute", reason?, includeOpenOrders?, symbols?:[] }
   if(req.url==="/admin/emergency-stop" && req.method==="POST"){
     const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
     if(!requireRole(user,["SuperAdmin","Admin"])) return error(res,"FORBIDDEN","role required",403);
-    return parseBody(req,res,({scope="spot",mode="dry-run"})=>{
-      const key=`es-${Date.now()}`; const code="000000";
-      approvals.set(key,{req:{scope,mode},approvals:new Set([user.sub]),executed:false,code});
-      auditLog("emergency.request",{key,scope,mode},user);
-      return send(res,200,{key,require2FA:true,codeHint:"000000"});
+    return parseBody(req,res,({scope="spot",mode="dry-run",reason="",includeOpenOrders=false,symbols=[]})=>{
+      const key=`es-${Date.now()}`;
+      const code="000000"; // stub 2FA
+      const reqObj={scope,mode,reason:String(reason||""),includeOpenOrders:Boolean(includeOpenOrders),symbols:Array.isArray(symbols)?symbols:[]};
+      approvals.set(key,{req:reqObj, approvals:new Set([user.sub]), executed:false, code});
+      auditLog("emergency.request",{key,...reqObj},user);
+      return send(res,200,{ key, require2FA:true, codeHint:"000000" });
     });
   }
+  // Approve: { key, code }
   if(req.url==="/admin/emergency-stop/approve" && req.method==="POST"){
     const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
     if(!requireRole(user,["SuperAdmin","Admin"])) return error(res,"FORBIDDEN","role required",403);
     return parseBody(req,res,({key,code})=>{
       const rec=approvals.get(key); if(!rec) return error(res,"NOT_FOUND","request not found",404);
+      if(rec.executed) return error(res,"BAD_REQUEST","already executed",400);
       if(code!==rec.code) return error(res,"BAD_REQUEST","2FA invalid",400);
       rec.approvals.add(user.sub);
       if(rec.approvals.size<2){
         auditLog("emergency.approve.partial",{key},user);
-        return send(res,200,{key,status:"waiting-second-approval"});
+        return send(res,200,{ key, status:"waiting-second-approval" });
       }
+      // çift onay tamam: UYGULAMA (stub)
       rec.executed=true;
-      auditLog("emergency.execute",{key,scope:rec.req.scope,mode:rec.req.mode},user);
-      return send(res,200,{key,status:"executed",scope:rec.req.scope,mode:rec.req.mode});
+      // burada gerçek dünya: open orders cancel + positions close (scope/symbols’a göre)
+      const executedActions = {
+        scope: rec.req.scope,
+        closedPositions: rec.req.scope!=="spot" ? 3 : 0, // demo
+        canceledOrders: rec.req.includeOpenOrders ? 5 : 0,
+        symbols: rec.req.symbols
+      };
+      auditLog("emergency.execute",{key, ...executedActions, reason:rec.req.reason},user);
+      return send(res,200,{ key, status:"executed", ...executedActions });
     });
+  }
+  // Pending list
+  if(req.url==="/admin/emergency-stop/requests" && req.method==="GET"){
+    const user=verify(req); if(!user) return error(res,"UNAUTHORIZED","auth required",401);
+    if(!requireRole(user,["SuperAdmin","Admin"])) return error(res,"FORBIDDEN","role required",403);
+    const list=[...approvals.entries()].map(([key,v])=>({key,req:v.req, approvals:[...v.approvals], executed:v.executed}));
+    return send(res,200,{items:list});
   }
 
   // ===== AUDIT read =====
@@ -191,11 +226,17 @@ const server=http.createServer((req,res)=>{
   return error(res,"NOT_FOUND","not found",404);
 });
 
-// WS dummy dashboard
+// === Dashboard WS (dummy) ===
 const wss=new WebSocketServer({port:8090});
 setInterval(()=>{
   if(wss.clients.size===0) return;
-  const data=JSON.stringify({ts:new Date().toISOString(),pnlDaily:(Math.random()*500-200).toFixed(2)});
+  const data=JSON.stringify({
+    ts:new Date().toISOString(),
+    pnlDaily:Number((Math.random()*500-200).toFixed(2)),
+    openPositions:Math.floor(Math.random()*5),
+    activeRobots:Math.floor(Math.random()*20)+1,
+    symbols:DASHBOARD_SYMBOLS.map(s=>({symbol:s,bid:null,ask:null,ts:null}))
+  });
   for(const c of wss.clients){try{c.send(data)}catch{}}
 },5000);
 
