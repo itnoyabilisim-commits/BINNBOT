@@ -32,6 +32,14 @@ const START_TIME = Date.now();
 let   REQ_COUNT  = 0;
 function incReq() { REQ_COUNT++; }
 function nowIso() { return new Date().toISOString(); }
+const LOG_PATH = process.env.LOG_PATH || "/var/log/binnbot/gateway.jsonl";
+function logJsonl(obj) {
+  try {
+    const line = JSON.stringify({ ts: nowIso(), ...obj }) + "\n";
+    // best-effort append
+    try { writeFileSync(LOG_PATH, line, { flag: "a" }); } catch {}
+  } catch {}
+}
 
 // ==== RATE LIMIT (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
@@ -108,6 +116,7 @@ const server=http.createServer(async (req,res)=>{
   // metrics + istek log (M4 eklendi)
   if (LOG_REQUESTS) {
     console.log(`[REQ] ${nowIso()} ${req.method} ${req.url}`);
+    logJsonl({ type: "req", method: req.method, url: req.url });
   }
 
   if(preflight(req,res)) return;
@@ -144,6 +153,20 @@ const server=http.createServer(async (req,res)=>{
       },
       ts: nowIso()
     });
+  }
+    // metrics (prometheus-like)
+  if (req.url === "/metrics.txt" && req.method === "GET") {
+    const mem = process.memoryUsage();
+    const lines = [
+      `binnbot_uptime_seconds ${Math.floor((Date.now() - START_TIME) / 1000)}`,
+      `binnbot_requests_total ${REQ_COUNT}`,
+      `binnbot_memory_rss_bytes ${mem.rss}`,
+      `binnbot_memory_heap_total_bytes ${mem.heapTotal}`,
+      `binnbot_memory_heap_used_bytes ${mem.heapUsed}`,
+      `binnbot_memory_external_bytes ${mem.external}`
+    ];
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    return res.end(lines.join("\n") + "\n");
   }
 
   // readyz: upstream health (varsa)
