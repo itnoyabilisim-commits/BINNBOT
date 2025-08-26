@@ -2,67 +2,67 @@
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
-  const [stats, setStats] = useState({ pnlDaily: 0, openPositions: 0, activeRobots: 0 });
-  const [ticks, setTicks] = useState([]);
+  const [market, setMarket] = useState("yükleniyor...");
+  const [news, setNews] = useState([]);
+  const [kpis, setKpis] = useState({ robots: 0, pnl: 0, users: 0 });
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8090");
-    ws.onmessage = (msg) => {
-      try {
-        const data = JSON.parse(msg.data);
-        setStats({ pnlDaily: data.pnlDaily, openPositions: data.openPositions, activeRobots: data.activeRobots });
-        setTicks(Array.isArray(data.symbols) ? data.symbols : []);
-      } catch {}
-    };
-    return () => ws.close();
+    // dummy fetch – backend bağlayınca gateway’den gelecek
+    setMarket("Yukarı Yönlü");
+    setKpis({ robots: 12, pnl: 4210, users: 128 });
+    setNews([
+      { id: 1, title: "BTC ETF onayı gündemde", ts: "2025-08-26" },
+      { id: 2, title: "ETH Merge sonrası işlem hacmi arttı", ts: "2025-08-25" }
+    ]);
   }, []);
 
   return (
-    <div style={{ padding: "30px", fontFamily: "sans-serif" }}>
-      <h1>Dashboard</h1>
+    <div style={{ maxWidth: 1000, margin: "40px auto", padding: 20 }}>
+      <h1>📊 Dashboard</h1>
 
-      {/* Özet kartlar (summary + dummy) */}
-      <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
-        <div style={{ flex: 1, padding: "20px", border: "1px solid #ccc", borderRadius: "8px" }}>
-          <h3>Günlük PnL (Son Gün)</h3>
-          <p style={{ fontSize: "24px", color: stats.pnlDaily >= 0 ? "green" : "red" }}>
-            {Number(stats.pnlDaily).toFixed(2)} ₺
-          </p>
+      {/* Piyasa durumu */}
+      <section style={{ marginTop: 24 }}>
+        <h2>Piyasa Durumu</h2>
+        <div
+          style={{
+            padding: 20,
+            background: "#121824",
+            border: "1px solid #1F2937",
+            borderRadius: 12,
+          }}
+        >
+          Şu an piyasa: <strong>{market}</strong>
         </div>
-        <div style={{ flex: 1, padding: "20px", border: "1px solid #ccc", borderRadius: "8px" }}>
-          <h3>Açık Pozisyon</h3>
-          <p style={{ fontSize: "24px" }}>{stats.openPositions}</p>
-        </div>
-        <div style={{ flex: 1, padding: "20px", border: "1px solid #ccc", borderRadius: "8px" }}>
-          <h3>Aktif Robotlar</h3>
-          <p style={{ fontSize: "24px" }}>{stats.activeRobots}</p>
-        </div>
-      </div>
+      </section>
 
-      {/* Canlı fiyatlar */}
-      <section style={{ marginTop: 30 }}>
-        <h2>Canlı Fiyatlar (market-ingestor)</h2>
-        {ticks.length === 0 ? (
-          <p>Veri bekleniyor...</p>
-        ) : (
-          <table border="1" cellPadding="10" style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr style={{ background: "#eee" }}>
-                <th>Symbol</th><th>Bid</th><th>Ask</th><th>Ts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ticks.map((t, i) => (
-                <tr key={i}>
-                  <td>{t.symbol}</td>
-                  <td>{t.bid ?? "-"}</td>
-                  <td>{t.ask ?? "-"}</td>
-                  <td>{t.ts ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* KPI kutuları */}
+      <section style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <div style={{ background: "#121824", padding: 16, borderRadius: 12 }}>
+          <div>Çalışan Robot</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{kpis.robots}</div>
+        </div>
+        <div style={{ background: "#121824", padding: 16, borderRadius: 12 }}>
+          <div>Toplam PnL</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--green)" }}>₺{kpis.pnl}</div>
+        </div>
+        <div style={{ background: "#121824", padding: 16, borderRadius: 12 }}>
+          <div>Aktif Kullanıcı</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{kpis.users}</div>
+        </div>
+      </section>
+
+      {/* Haber akışı (Plus/Pro) */}
+      <section style={{ marginTop: 24 }}>
+        <h2>📢 Haber Akışı</h2>
+        {news.length === 0 && <p>Haber bulunamadı.</p>}
+        <ul style={{ listStyle: "none", padding: 0 }}>
+          {news.map((n) => (
+            <li key={n.id} style={{ margin: "12px 0", padding: 12, background: "#121824", borderRadius: 8 }}>
+              <div style={{ fontSize: 14, color: "#B7C0D1" }}>{n.ts}</div>
+              <div style={{ fontWeight: 600 }}>{n.title}</div>
+            </li>
+          ))}
+        </ul>
       </section>
     </div>
   );
