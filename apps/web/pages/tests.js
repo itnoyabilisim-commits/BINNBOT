@@ -7,6 +7,12 @@ export default function Tests(){
   const [msg,setMsg]=useState("");
   const [resp,setResp]=useState(null);
 
+  // Futures form state
+  const [futSymbol, setFutSymbol] = useState("BTCUSDT");
+  const [futTimeframe, setFutTimeframe] = useState("1h");
+  const [futLev, setFutLev] = useState(5);
+  const [futMM, setFutMM] = useState("cross");
+
   async function run(path, body){
     setMsg("Çalıştırılıyor..."); setResp(null);
     try{const r=await apiPost(path, body); setResp(r); setMsg("");}
@@ -41,14 +47,57 @@ export default function Tests(){
       {tab==="active-fut" && (
         <section>
           <h3>Active Test – Futures</h3>
-          <button onClick={()=>run("/tests/active/futures",{symbol:"BTCUSDT",leverage:5,marginMode:"cross"})}>Başlat</button>
+          <div style={{ display:"flex", gap:8, alignItems:"end", flexWrap:"wrap" }}>
+            <div>
+              <label>Symbol</label><br/>
+              <input value={futSymbol} onChange={e=>setFutSymbol(e.target.value.toUpperCase())}/>
+            </div>
+            <div>
+              <label>Leverage</label><br/>
+              <input type="number" min={1} max={125} value={futLev} onChange={e=>setFutLev(Number(e.target.value||5))}/>
+            </div>
+            <div>
+              <label>Margin Mode</label><br/>
+              <select value={futMM} onChange={e=>setFutMM(e.target.value)}>
+                <option value="cross">cross</option>
+                <option value="isolated">isolated</option>
+              </select>
+            </div>
+            <button onClick={()=>run("/tests/active/futures",{symbol:futSymbol,leverage:futLev,marginMode:futMM})}>Başlat</button>
+          </div>
         </section>
       )}
 
       {tab==="backtest-fut" && (
         <section>
           <h3>Backtest – Futures</h3>
-          <button onClick={()=>run("/tests/backtest/futures",{symbol:"BTCUSDT",timeframe:"1h",leverage:5,marginMode:"cross"})}>Çalıştır</button>
+          <div style={{ display:"flex", gap:8, alignItems:"end", flexWrap:"wrap" }}>
+            <div>
+              <label>Symbol</label><br/>
+              <input value={futSymbol} onChange={e=>setFutSymbol(e.target.value.toUpperCase())}/>
+            </div>
+            <div>
+              <label>Timeframe</label><br/>
+              <select value={futTimeframe} onChange={e=>setFutTimeframe(e.target.value)}>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+              </select>
+            </div>
+            <div>
+              <label>Leverage</label><br/>
+              <input type="number" min={1} max={125} value={futLev} onChange={e=>setFutLev(Number(e.target.value||5))}/>
+            </div>
+            <div>
+              <label>Margin Mode</label><br/>
+              <select value={futMM} onChange={e=>setFutMM(e.target.value)}>
+                <option value="cross">cross</option>
+                <option value="isolated">isolated</option>
+              </select>
+            </div>
+            <button onClick={()=>run("/tests/backtest/futures",{symbol:futSymbol,timeframe:futTimeframe,leverage:futLev,marginMode:futMM})}>Çalıştır</button>
+          </div>
         </section>
       )}
 
