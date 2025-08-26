@@ -106,3 +106,18 @@ curl -X POST http://localhost:8080/notify \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <ACCESS_TOKEN>" \
   -d '{"type":"push","to":"device-token-xyz","msg":"BINNBOT push testi"}'
+
+### Emergency Stop – cURL
+```bash
+# İstek oluştur (dry-run, spot, reason, open orders dahil)
+curl -X POST http://localhost:8080/admin/emergency-stop \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"scope":"spot","mode":"dry-run","reason":"Ani düşüş","includeOpenOrders":true,"symbols":["BTCUSDT","ETHUSDT"]}'
+
+# Onayla (2FA stub: 000000)
+curl -X POST http://localhost:8080/admin/emergency-stop/approve \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"key":"es-169...", "code":"000000"}'
+
+# Pending listesi
+curl http://localhost:8080/admin/emergency-stop/requests -H "Authorization: Bearer <ACCESS_TOKEN>"
