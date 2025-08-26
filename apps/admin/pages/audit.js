@@ -1,5 +1,6 @@
 // apps/admin/pages/audit.js
 import { useEffect, useMemo, useState } from "react";
+
 const GW = "http://localhost:8080";
 
 async function jgetAuth(path) {
@@ -9,6 +10,13 @@ async function jgetAuth(path) {
   const t = await r.text();
   try { return { ok: r.ok, status: r.status, json: t ? JSON.parse(t) : null }; }
   catch { return { ok: r.ok, status: r.status, json: { raw: t } }; }
+}
+
+async function sha256(text) {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  const arr = Array.from(new Uint8Array(buf));
+  return arr.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 export default function AuditAdmin() {
@@ -34,7 +42,7 @@ export default function AuditAdmin() {
     });
   }, [items, eventFilter, textFilter]);
 
-  function exportCSV() {
+  async function exportCSV() {
     const header = ["ts","event","actor","role","payload"];
     const rows = filtered.map(x => [
       x.ts || "",
@@ -44,11 +52,19 @@ export default function AuditAdmin() {
       JSON.stringify(x.payload || {})
     ]);
     const content = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const hash = await sha256(content);
+
+    // CSV indir
     const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `audit-${Date.now()}.csv`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `audit-${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
+
+    // HASH indir
+    const hblob = new Blob([hash], { type: "text/plain;charset=utf-8;" });
+    const hurl = URL.createObjectURL(hblob);
+    const ha = document.createElement("a"); ha.href = hurl; ha.download = `audit-${Date.now()}.sha256.txt`; ha.click();
+    URL.revokeObjectURL(hurl);
   }
 
   // Event türlerini otomatik çıkar
@@ -73,7 +89,7 @@ export default function AuditAdmin() {
           <input value={textFilter} onChange={e=>setTextFilter(e.target.value)} placeholder="actor, symbol, reason..." />
         </div>
         <button onClick={load}>Yenile</button>
-        <button onClick={exportCSV}>CSV Dışa Aktar</button>
+        <button onClick={exportCSV}>CSV + SHA256 Dışa Aktar</button>
       </div>
 
       {msg && <p style={{ color: "#b00" }}>{msg}</p>}
