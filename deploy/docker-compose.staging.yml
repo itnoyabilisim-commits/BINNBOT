@@ -8,3 +8,5 @@ services:
       - "8080:8080"
     env_file:
       - /opt/binnbot/.env.staging
+    volumes:
+      - /opt/binnbot/logs:/var/log/binnbot
