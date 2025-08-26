@@ -22,6 +22,17 @@ const ROBOT_EXEC_URL  = process.env.ROBOT_EXEC_URL  || "http://localhost:8095";
 const DASHBOARD_SYMBOLS = (process.env.DASHBOARD_SYMBOLS || "BTCUSDT,ETHUSDT")
   .split(",").map(s=>s.trim().toUpperCase()).filter(Boolean);
 
+// ==== BUILD / LOG / METRICS (M4 eklendi) ====
+const VERSION       = process.env.VERSION     || "0.0.0";
+const BUILD_TIME    = process.env.BUILD_TIME  || "";
+const GIT_SHA       = process.env.GIT_SHA     || "";
+const LOG_REQUESTS  = String(process.env.LOG_REQUESTS || "false").toLowerCase() === "true";
+
+const START_TIME = Date.now();
+let   REQ_COUNT  = 0;
+function incReq() { REQ_COUNT++; }
+function nowIso() { return new Date().toISOString(); }
+
 // ==== RATE LIMIT (dakikada N) ====
 const RATE_LIMIT = Number(process.env.RATE_LIMIT || 60);
 const WINDOW_MS  = 60_000;
@@ -44,7 +55,7 @@ function send(res,code,data,hdrs={}){const h={"Content-Type":"application/json",
 function error(res, code, message, status=400, hdrs={}){return send(res,status,{code,message},hdrs);}
 function parseBody(req,res,cb){let b="";req.on("data",c=>b+=c);req.on("end",()=>{try{cb(JSON.parse(b||"{}"))}catch{return error(res,"BAD_REQUEST","invalid JSON",400)}});}
 async function safeFetch(url, init){try{const r=await fetch(url,init);const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{j={raw:t}};return {ok:r.ok,status:r.status,json:j}}catch(e){return {ok:false,status:502,json:{code:"UPSTREAM_ERROR",message:String(e)}}}}
-function preflight(req,res){if(req.method==="OPTIONS"){res.writeHead(204,{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,PATCH,DELETE,OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"});res.end();return true}return false}
+function preflight(req,res){if(req.method==="OPTIONS"){res.writeHead(204,{"Content-Type":"application/json","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,PATCH,DELETE,OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"});res.end();return true}return false}
 
 // notifier helper
 async function notifyAdmins(payload){
@@ -93,9 +104,70 @@ function validateOrderQtyPrice(symbol, type, quantity, price){
 }
 
 // ==== HTTP server ====
-const server=http.createServer((req,res)=>{
+const server=http.createServer(async (req,res)=>{
+  // metrics + istek log (M4 eklendi)
+  if (LOG_REQUESTS) {
+    console.log(`[REQ] ${nowIso()} ${req.method} ${req.url}`);
+  }
+
   if(preflight(req,res)) return;
   if(!rateLimit(req,res)) return;
+  incReq();
+
+  // ---------- M4: system/health endpoints ----------
+  // smoke: basit duman testi
+  if (req.url === "/__smoke" && req.method === "GET") {
+    return send(res, 200, { ok: true, ts: nowIso() });
+  }
+
+  // version: build bilgisi
+  if (req.url === "/version" && req.method === "GET") {
+    return send(res, 200, {
+      version: VERSION,
+      buildTime: BUILD_TIME,
+      gitSha: GIT_SHA,
+      startedAt: new Date(START_TIME).toISOString()
+    });
+  }
+
+  // metrics: uptime, reqCount, memory
+  if (req.url === "/metrics" && req.method === "GET") {
+    const mem = process.memoryUsage();
+    return send(res, 200, {
+      uptimeSec: Math.floor((Date.now() - START_TIME) / 1000),
+      reqCount: REQ_COUNT,
+      memory: {
+        rss: mem.rss,
+        heapTotal: mem.heapTotal,
+        heapUsed: mem.heapUsed,
+        external: mem.external
+      },
+      ts: nowIso()
+    });
+  }
+
+  // readyz: upstream health (varsa)
+  if (req.url === "/readyz" && req.method === "GET") {
+    const targets = [
+      { key: "reporting", url: REPORTING_URL ? `${REPORTING_URL}/healthz` : "" },
+      { key: "scanner",   url: SCANNER_URL   ? `${SCANNER_URL}/healthz`   : "" },
+      { key: "ingestor",  url: INGESTOR_URL  ? `${INGESTOR_URL}/healthz`  : "" },
+      { key: "notifier",  url: NOTIFIER_URL  ? `${NOTIFIER_URL}/healthz`  : "" },
+      { key: "robotExec", url: ROBOT_EXEC_URL? `${ROBOT_EXEC_URL}/healthz`: "" },
+    ].filter(x => x.url);
+
+    const results = {};
+    for (const t of targets) {
+      try {
+        const r = await fetch(t.url, { method: "GET" });
+        results[t.key] = r.ok ? "ok" : `bad(${r.status})`;
+      } catch (e) {
+        results[t.key] = `error(${String(e)})`;
+      }
+    }
+    return send(res, 200, { ok: true, results, ts: nowIso() });
+  }
+  // -------------------------------------------------
 
   // system
   if(req.url==="/healthz" && req.method==="GET"){res.writeHead(200);return res.end("ok");}
