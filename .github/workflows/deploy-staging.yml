@@ -1,0 +1,74 @@
+name: Deploy Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Docker image (username/binnbot:tag)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ inputs.image != '' && inputs.image || format('{0}/binnbot:latest', secrets.DOCKERHUB_USERNAME) }}
+      STAGING_DIR: /opt/binnbot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Create remote dir & write env
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          script: |
+            sudo mkdir -p $STAGING_DIR
+            # .env.staging içeriğini GitHub Secret'tan yaz
+            cat > $STAGING_DIR/.env.staging <<'EOF'
+${{ secrets.STAGING_ENV_FILE }}
+EOF
+            sudo chmod 600 $STAGING_DIR/.env.staging
+
+      - name: Login to Docker Hub (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          script: |
+            echo "Login Docker Hub on remote"
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Pull & run container (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          envs: IMAGE,STAGING_DIR
+          script: |
+            echo "Using image: $IMAGE"
+            docker pull "$IMAGE"
+            docker rm -f binnbot-gateway || true
+            docker run -d --name binnbot-gateway \
+              --restart=always \
+              -p 8080:8080 \
+              --env-file $STAGING_DIR/.env.staging \
+              "$IMAGE"
+
+      - name: Health check (remote)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          script: |
+            sleep 2
+            curl -sf http://localhost:8080/healthz || (docker logs --tail=100 binnbot-gateway && exit 1)
