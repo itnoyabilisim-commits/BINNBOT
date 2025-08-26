@@ -32,7 +32,7 @@ jobs:
       - name: Lint AsyncAPI
         run: spectral lint packages/contracts/asyncapi.yaml
 
-  smoke:   # 🚀 ayrı job, aynı seviye
+  smoke:
     runs-on: ubuntu-latest
     env:
       GW_BASE: http://localhost:8080
