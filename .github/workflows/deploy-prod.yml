@@ -1,4 +1,4 @@
-name: Deploy Prod
+name: Deploy Staging
 
 on:
   workflow_dispatch:
@@ -7,16 +7,15 @@ on:
         description: "Docker image (username/binnbot:tag)"
         required: false
         default: ""
-  push:
-    tags:
-      - "v1.*"
 
 jobs:
   deploy:
+    # ✅ Staging secrets eksikse job skip
+    if: ${{ secrets.STAGING_HOST != '' && secrets.STAGING_USER != '' && secrets.STAGING_SSH_KEY != '' && secrets.STAGING_ENV_FILE != '' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
     env:
       IMAGE: ${{ inputs.image != '' && inputs.image || format('{0}/binnbot:latest', secrets.DOCKERHUB_USERNAME) }}
-      PROD_DIR: /opt/binnbot
+      STAGING_DIR: /opt/binnbot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,57 +23,49 @@ jobs:
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
-      - name: Prepare files on remote
+      - name: Create remote dir & write env
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
           script: |
-            sudo mkdir -p $PROD_DIR
-            # .env.prod
-            cat > $PROD_DIR/.env.prod <<'EOF'
-${{ secrets.PROD_ENV_FILE }}
+            sudo mkdir -p $STAGING_DIR
+            cat > $STAGING_DIR/.env.staging <<'EOF'
+${{ secrets.STAGING_ENV_FILE }}
 EOF
-            # Caddyfile
-            cat > $PROD_DIR/Caddyfile <<'EOF'
-${{ secrets.PROD_CADDYFILE }}
-EOF
-            sudo chmod 600 $PROD_DIR/.env.prod
+            sudo chmod 600 $STAGING_DIR/.env.staging
 
-      - name: Login Docker Hub (remote)
+      - name: Login to Docker Hub (remote)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
           script: |
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-      - name: Pull image & up (remote)
+      - name: Pull & run container (remote)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          envs: IMAGE,PROD_DIR
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          envs: IMAGE,STAGING_DIR
           script: |
             echo "Using image: $IMAGE"
-            cd $PROD_DIR
             docker pull "$IMAGE"
-            # compose dosyasını yaz
-            cat > docker-compose.prod.yml <<'EOF'
-$(cat deploy/docker-compose.prod.yml)
-EOF
-            # eski containerları kaldır
-            docker compose -f docker-compose.prod.yml down || true
-            # env için image değişkenini set ederek up
-            DOCKER_IMAGE="$IMAGE" docker compose -f docker-compose.prod.yml up -d
+            docker rm -f binnbot-gateway || true
+            docker run -d --name binnbot-gateway \
+              --restart=always \
+              -p 8080:8080 \
+              --env-file $STAGING_DIR/.env.staging \
+              "$IMAGE"
 
       - name: Health check (remote)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
           script: |
-            sleep 5
-            curl -fsS https://${{ secrets.PROD_DOMAIN }}/healthz || (docker logs --tail=120 binnbot-gateway && exit 1)
+            sleep 2
+            curl -sf http://localhost:8080/healthz || (docker logs --tail=100 binnbot-gateway && exit 1)
