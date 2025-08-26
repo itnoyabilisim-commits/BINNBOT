@@ -2,15 +2,9 @@
 export default function AdminHome() {
   return (
     <div style={{ display: "flex", fontFamily: "sans-serif" }}>
-      {/* Sidebar */}
-      <nav style={{
-        width: "220px",
-        borderRight: "1px solid #ccc",
-        padding: "20px",
-        height: "100vh"
-      }}>
+      <nav style={{ width: 220, borderRight: "1px solid #ccc", padding: 20, height: "100vh" }}>
         <h2>Admin Panel</h2>
-        <ul style={{ listStyle: "none", padding: 0, marginTop: "20px" }}>
+        <ul style={{ listStyle: "none", padding: 0, marginTop: 20 }}>
           <li><a href="/users">Kullanıcı Yönetimi</a></li>
           <li><a href="/billing">Plan & Faturalandırma</a></li>
           <li><a href="/robots">Robot Monitörü</a></li>
@@ -19,12 +13,11 @@ export default function AdminHome() {
           <li><a href="/notifier">Bildirim & Entegrasyon</a></li>
           <li><a href="/system">Sistem Durumu</a></li>
           <li><a href="/audit">Audit & Güvenlik</a></li>
-          <li><a href="/binance">Binance Diagnostics</a></li> {/* ← yeni link */}
+          <li><a href="/binance">Binance Diagnostics</a></li>
+          <li><a href="/emergency-stop">Acil Stop</a></li>
         </ul>
       </nav>
-
-      {/* Main Content */}
-      <main style={{ flex: 1, padding: "20px" }}>
+      <main style={{ flex: 1, padding: 20 }}>
         <h1>Admin Panel Anasayfa</h1>
         <p>Soldaki menüden yönetim modüllerini seçebilirsiniz.</p>
       </main>
