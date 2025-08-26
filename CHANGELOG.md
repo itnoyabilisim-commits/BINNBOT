@@ -67,3 +67,16 @@
 - Gateway: robot CRUD futures desteği, emergency-stop akışı iyileştirmeleri
 - Web: Futures test formu parametreli, robots sayfası leverage/margin destekli
 - Admin: Robots listesinde “Çalıştır”, Emergency Stop listesinde “Onayla” kısayolu
+
+## [1.0.0] - 2025-08-26
+### Added
+- M4: CI (Prettier, contract lint), Smoke & Unit test job’ları
+- M4: Docker build & push (opsiyonel; secrets varsa)
+- M4: Staging deploy workflow (env-in-secrets)
+- M4: Monitoring (jsonl logs, /metrics, /metrics.txt)
+- M4: Prod deploy (Caddy reverse proxy + TLS) workflow
+- QA Final Checklist ve Deploy Notları dokümantasyonu
+
+### Notes
+- Deploy job’ları gerekli secret’lar tanımlı değilse otomatik **skip** olur.
+- Release akışı `Release` workflow ile `vX.Y.Z` etiketi üzerinden yapılır.
