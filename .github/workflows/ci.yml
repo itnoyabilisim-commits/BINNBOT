@@ -52,3 +52,17 @@ jobs:
 
       - name: Run Smoke
         run: node tests/smoke.api.test.mjs
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run unit tests (normalizeBinanceError)
+        run: node tests/unit.normalizeBinanceError.test.mjs
+
+      - name: Run unit tests (round/validate)
+        run: node tests/unit.exchange.validate.test.mjs
