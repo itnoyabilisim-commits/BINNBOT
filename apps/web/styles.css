@@ -1,5 +1,77 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+:root{
+  --bg:#0B0F17; --fg:#FFFFFF; --muted:#B7C0D1;
+  --gold:#F4B400; --green:#10B981; --card:#121824; --line:#1F2937;
 }
-a { color: #F4B400; text-decoration: none; margin: 0 5px; }
+*{box-sizing:border-box} html,body,#__next{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 15px/1.6 system-ui,-apple-system,Segoe UI,Roboto}
+a{color:inherit;text-decoration:none}
+.btn{display:inline-block;padding:10px 16px;border-radius:10px;font-weight:600;transition:.2s}
+.btn.primary{background:var(--gold);color:#000}
+.btn.ghost{border:1px solid #ffffff33;color:#fff}
+.btn.primary:hover{filter:brightness(0.95)} .btn.ghost:hover{background:#ffffff0f}
+.bb-container{max-width:1180px;margin:0 auto;padding:0 16px}
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+h1{font-size:40px;line-height:1.2;margin:8px 0 12px}
+h2{font-size:28px;margin:0 0 10px}
+h3{margin:0 0 8px}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.lead{color:var(--muted);max-width:560px}
+
+/* Header + ticker */
+.bb-header{position:sticky;top:0;z-index:50;background:#0b0f17cc;backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
+.bb-header-row{display:flex;align-items:center;gap:16px;height:64px}
+.bb-logo{font-weight:900;letter-spacing:.5px}
+.bb-nav{display:flex;gap:18px;margin-left:12px}
+.bb-nav a{opacity:.85} .bb-nav a:hover{opacity:1}
+.bb-cta{margin-left:auto;display:flex;gap:10px}
+.bb-ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#0b0f17}
+.bb-ticker-row{display:flex;gap:16px;overflow:hidden;white-space:nowrap;padding:8px 0}
+.bb-tick{display:flex;gap:14px;animation:marquee 24s linear infinite}
+.bb-tick strong{color:var(--muted)}
+.bb-tick-split{width:1px;background:var(--line)}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* Hero + tiles */
+.bb-hero-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:22px;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-size:22px;font-weight:800}
+.grid-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.tile h4{margin:0 0 6px}
+.tile p{margin:0;color:var(--muted)}
+.tile .mini{font-size:12px;color:var(--muted)}
+.tile .badge{display:inline-block;padding:2px 6px;border:1px solid #ffffff22;border-radius:999px;font-size:11px;margin-left:6px;color:#fff9}
+
+/* Features */
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.fcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.fcard .icon{font-size:22px}
+.fcard p{margin:6px 0 0;color:var(--muted)}
+
+/* Pricing */
+.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.plan.highlight{border-color:#ffffff33;background:#ffffff0b}
+.plan h3{margin:0}
+.plan .price{font-size:30px;font-weight:900}
+.plan ul{padding:0;margin:12px 0 0;list-style:none;color:var(--muted)}
+.plan li{margin:6px 0}
+.plan .per{color:var(--muted);margin-left:4px}
+.plan .tag{font-size:11px;background:#10b98122;color:#10B981;padding:3px 6px;border-radius:6px;margin-left:6px}
+
+/* Footer */
+.bb-footer{padding:28px 0 40px}
+.f-columns{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.f-columns h4{margin:0 0 8px;font-size:14px;color:#fff}
+.f-columns a{display:block;margin:4px 0;color:var(--muted)}
+.f-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--muted);font-size:13px}
+
+/* Responsive */
+@media (max-width:980px){
+  .bb-hero-grid{grid-template-columns:1fr}
+  .grid-tiles{grid-template-columns:repeat(2,1fr)}
+  .features-grid{grid-template-columns:1fr}
+  .pricing{grid-template-columns:1fr}
+  .f-columns{grid-template-columns:repeat(2,1fr)}
+}
