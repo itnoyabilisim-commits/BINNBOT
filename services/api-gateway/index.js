@@ -191,7 +191,75 @@ const server=http.createServer(async (req,res)=>{
     return send(res, 200, { ok: true, results, ts: nowIso() });
   }
   // -------------------------------------------------
+  // ---------- M4: system/health endpoints ----------
+  // smoke: basit duman testi
+  if (req.url === "/__smoke" && req.method === "GET") {
+    return send(res, 200, { ok: true, ts: nowIso() });
+  }
 
+  // version: build bilgisi
+  if (req.url === "/version" && req.method === "GET") {
+    return send(res, 200, {
+      version: VERSION,
+      buildTime: BUILD_TIME,
+      gitSha: GIT_SHA,
+      startedAt: new Date(START_TIME).toISOString()
+    });
+  }
+
+  // metrics: uptime, reqCount, memory (JSON)
+  if (req.url === "/metrics" && req.method === "GET") {
+    const mem = process.memoryUsage();
+    return send(res, 200, {
+      uptimeSec: Math.floor((Date.now() - START_TIME) / 1000),
+      reqCount: REQ_COUNT,
+      memory: {
+        rss: mem.rss,
+        heapTotal: mem.heapTotal,
+        heapUsed: mem.heapUsed,
+        external: mem.external
+      },
+      ts: nowIso()
+    });
+  }
+
+  // metrics (prometheus-like TXT)
+  if (req.url === "/metrics.txt" && req.method === "GET") {
+    const mem = process.memoryUsage();
+    const lines = [
+      `binnbot_uptime_seconds ${Math.floor((Date.now() - START_TIME) / 1000)}`,
+      `binnbot_requests_total ${REQ_COUNT}`,
+      `binnbot_memory_rss_bytes ${mem.rss}`,
+      `binnbot_memory_heap_total_bytes ${mem.heapTotal}`,
+      `binnbot_memory_heap_used_bytes ${mem.heapUsed}`,
+      `binnbot_memory_external_bytes ${mem.external}`
+    ];
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    return res.end(lines.join("\n") + "\n");
+  }
+
+  // readyz: upstream health (varsa)
+  if (req.url === "/readyz" && req.method === "GET") {
+    const targets = [
+      { key: "reporting", url: REPORTING_URL ? `${REPORTING_URL}/healthz` : "" },
+      { key: "scanner",   url: SCANNER_URL   ? `${SCANNER_URL}/healthz`   : "" },
+      { key: "ingestor",  url: INGESTOR_URL  ? `${INGESTOR_URL}/healthz`  : "" },
+      { key: "notifier",  url: NOTIFIER_URL  ? `${NOTIFIER_URL}/healthz`  : "" },
+      { key: "robotExec", url: ROBOT_EXEC_URL? `${ROBOT_EXEC_URL}/healthz`: "" },
+    ].filter(x => x.url);
+
+    const results = {};
+    for (const t of targets) {
+      try {
+        const r = await fetch(t.url, { method: "GET" });
+        results[t.key] = r.ok ? "ok" : `bad(${r.status})`;
+      } catch (e) {
+        results[t.key] = `error(${String(e)})`;
+      }
+    }
+    return send(res, 200, { ok: true, results, ts: nowIso() });
+  }
+  // -------------------------------------------------
   // system
   if(req.url==="/healthz" && req.method==="GET"){res.writeHead(200);return res.end("ok");}
 
